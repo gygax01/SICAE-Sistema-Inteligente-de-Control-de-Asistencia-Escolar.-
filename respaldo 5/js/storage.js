@@ -1,19 +1,80 @@
-﻿/* ======================================================
+/* ======================================================
    ===== STORAGE OFFLINE FIRST (SOURCE OF TRUTH) =====
 ====================================================== */
 
 /* ================= UTIL BASE ================= */
 
+function getAppScopePathname() {
+  const path = String(window.location.pathname || "/");
+  if (path.endsWith("/")) {
+    return path.slice(0, -1) || "/";
+  }
+
+  const idx = path.lastIndexOf("/");
+  if (idx < 0) return "/";
+  return path.slice(0, idx) || "/";
+}
+
+function sanitizeNamespace(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9/_-]+/g, "_")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+|\/+$/g, "") || "root";
+}
+
+const APP_STORAGE_NAMESPACE = `sicae:${sanitizeNamespace(getAppScopePathname())}`;
+
+function storageKey(key) {
+  return `${APP_STORAGE_NAMESPACE}:${String(key || "").trim()}`;
+}
+
+function storageGetItem(key) {
+  return localStorage.getItem(storageKey(key));
+}
+
+function storageSetItem(key, value) {
+  localStorage.setItem(storageKey(key), String(value));
+}
+
+function storageRemoveItem(key) {
+  localStorage.removeItem(storageKey(key));
+}
+
+function isAppStorageKeyMatch(eventKey, key) {
+  const scoped = storageKey(key);
+  return eventKey === scoped || eventKey === key;
+}
+
+function appBroadcastChannelName(base) {
+  return `${String(base || "victory-data")}:${APP_STORAGE_NAMESPACE}`;
+}
+
+function createAppBroadcastChannel(base) {
+  return new BroadcastChannel(appBroadcastChannelName(base));
+}
+
+window.APP_STORAGE_NAMESPACE = APP_STORAGE_NAMESPACE;
+window.storageKey = storageKey;
+window.storageGetItem = storageGetItem;
+window.storageSetItem = storageSetItem;
+window.storageRemoveItem = storageRemoveItem;
+window.isAppStorageKeyMatch = isAppStorageKeyMatch;
+window.appBroadcastChannelName = appBroadcastChannelName;
+window.createAppBroadcastChannel = createAppBroadcastChannel;
+
 function safeGet(key) {
   try {
-    return JSON.parse(localStorage.getItem(key)) || [];
+    const raw = storageGetItem(key);
+    return raw ? (JSON.parse(raw) || []) : [];
   } catch {
     return [];
   }
 }
 
 function safeSet(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  storageSetItem(key, JSON.stringify(value));
 }
 
 function normalizarUID(uid) {
@@ -101,4 +162,3 @@ function obtenerAsistencias() {
 function guardarAsistencias(data) {
   safeSet("asistencias", data);
 }
-
