@@ -4,6 +4,13 @@
 
 const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
 const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
+const SUPABASE_PROJECT_REF = (() => {
+  try {
+    return new URL(SUPABASE_PROJECT_URL).host.split(".")[0] || "";
+  } catch {
+    return "";
+  }
+})();
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
@@ -33,6 +40,24 @@ function resolveSupabaseApiKey() {
   return SUPABASE_PUBLISHABLE_KEY;
 }
 
+function parseJwtPayload(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function tokenPerteneceAProyectoActual(token) {
+  const payload = parseJwtPayload(token);
+  const ref = String(payload?.ref || "").trim();
+  return !!ref && ref === SUPABASE_PROJECT_REF;
+}
+
 function resolveBearerToken() {
   const fromAuth = typeof getAuthToken === "function"
     ? getAuthToken()
@@ -40,6 +65,9 @@ function resolveBearerToken() {
 
   const token = String(fromAuth || "").trim();
   if (!token || token.startsWith("sb_publishable_") || token === "postgrest-direct") {
+    return SUPABASE_ANON_KEY;
+  }
+  if (token.includes(".") && !tokenPerteneceAProyectoActual(token)) {
     return SUPABASE_ANON_KEY;
   }
   return token;
@@ -72,7 +100,12 @@ window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 window.supabaseClient = null;
 localStorage.setItem("API_BASE_URL", API_BASE_URL);
 const tokenActual = String(localStorage.getItem("asistencia_auth_token") || "").trim();
-if (!tokenActual || tokenActual.startsWith("sb_publishable_") || tokenActual === "postgrest-direct") {
+if (
+  !tokenActual ||
+  tokenActual.startsWith("sb_publishable_") ||
+  tokenActual === "postgrest-direct" ||
+  (tokenActual.includes(".") && !tokenPerteneceAProyectoActual(tokenActual))
+) {
   localStorage.setItem("asistencia_auth_token", SUPABASE_ANON_KEY);
 }
 localStorage.setItem(SUPABASE_API_KEY_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY);
