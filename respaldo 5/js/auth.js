@@ -2,6 +2,8 @@
    ===== AUTH JWT (FRONTEND) ===========================
 ====================================================== */
 
+(() => {
+
 const AUTH_TOKEN_KEY = "asistencia_auth_token";
 const AUTH_USER_KEY = "asistencia_auth_user";
 const AUTH_BYPASS_KEY = "AUTH_BYPASS";
@@ -293,3 +295,5 @@ window.addEventListener("load", async () => {
 
   hydrateAuthUI();
 });
+
+})();
