@@ -80,11 +80,11 @@
     </div>
   </div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/asistencias.js"></script>
-  <script src="js/realtime.js"></script>
-  <script src="js/nfc.js"></script>
+  <script src="js/storage.js?v=20260309a"></script>
+  <script src="js/auth.js?v=20260309a"></script>
+  <script src="js/asistencias.js?v=20260309a"></script>
+  <script src="js/realtime.js?v=20260309a"></script>
+  <script src="js/nfc.js?v=20260309a"></script>
 
   <script>
     let ultimoUIDLeido = null;
@@ -413,7 +413,9 @@
       }
     }
 
-    const canal = new BroadcastChannel("victory-data");
+    const canal = typeof createAppBroadcastChannel === "function"
+      ? createAppBroadcastChannel("victory-data")
+      : new BroadcastChannel("victory-data");
     canal.onmessage = async e => {
       if (e.data === "asistencias") {
         renderTablaConEstado();
@@ -423,7 +425,10 @@
     };
 
     window.addEventListener("storage", async e => {
-      if (e.key === "asistencias") {
+      const keyOk = typeof isAppStorageKeyMatch === "function"
+        ? isAppStorageKeyMatch(e.key, "asistencias")
+        : (e.key === "asistencias");
+      if (keyOk) {
         renderTablaConEstado();
         actualizarContador();
         await actualizarDashboard();
