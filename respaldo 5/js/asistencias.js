@@ -4,7 +4,9 @@
 
 (function initAsistenciasSync() {
 
-  const bc = new BroadcastChannel("victory-data");
+  const bc = typeof createAppBroadcastChannel === "function"
+    ? createAppBroadcastChannel("victory-data")
+    : new BroadcastChannel("victory-data");
 
   bc.onmessage = e => {
     if (e.data === "asistencias") {
@@ -14,7 +16,10 @@
   };
 
   window.addEventListener("storage", e => {
-    if (e.key === "asistencias") {
+    const keyOk = typeof isAppStorageKeyMatch === "function"
+      ? isAppStorageKeyMatch(e.key, "asistencias")
+      : (e.key === "asistencias");
+    if (keyOk) {
       cargarAsistencias();
       actualizarContador();
     }
@@ -142,5 +147,8 @@ function actualizarContador() {
 ====================================================== */
 
 function notificarCambioAsistencias() {
-  new BroadcastChannel("victory-data").postMessage("asistencias");
+  const bc = typeof createAppBroadcastChannel === "function"
+    ? createAppBroadcastChannel("victory-data")
+    : new BroadcastChannel("victory-data");
+  bc.postMessage("asistencias");
 }
