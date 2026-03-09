@@ -17,6 +17,15 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
 const SUPABASE_API_KEY_STORAGE_KEY = "SUPABASE_API_KEY";
+const getStore = typeof storageGetItem === "function"
+  ? storageGetItem
+  : key => localStorage.getItem(key);
+const setStore = typeof storageSetItem === "function"
+  ? storageSetItem
+  : (key, value) => localStorage.setItem(key, value);
+const buildChannel = typeof createAppBroadcastChannel === "function"
+  ? createAppBroadcastChannel
+  : base => new BroadcastChannel(base);
 
 function esSupabaseRest(url) {
   return /supabase\.co\/rest\/v1$/i.test(String(url || "").trim().replace(/\/+$/, ""));
@@ -32,11 +41,24 @@ function isSupabaseRestOfCurrentProject(url) {
   }
 }
 
+function isSupabaseRequestUrl(url) {
+  try {
+    const parsed = new URL(String(url || ""), window.location.origin);
+    return /\.supabase\.co$/i.test(parsed.hostname) && /^\/rest\/v1(\/|$)/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function shouldIncludeCredentials(url) {
+  return !isSupabaseRequestUrl(url);
+}
+
 function resolveSupabaseApiKey() {
   const fromWindow = String(window.SUPABASE_PUBLISHABLE_KEY || "").trim();
   if (fromWindow) return fromWindow;
 
-  const fromStorage = String(localStorage.getItem(SUPABASE_API_KEY_STORAGE_KEY) || "").trim();
+  const fromStorage = String(getStore(SUPABASE_API_KEY_STORAGE_KEY) || "").trim();
   if (fromStorage) return fromStorage;
 
   return SUPABASE_PUBLISHABLE_KEY;
@@ -63,7 +85,7 @@ function tokenPerteneceAProyectoActual(token) {
 function resolveBearerToken() {
   const fromAuth = typeof getAuthToken === "function"
     ? getAuthToken()
-    : String(localStorage.getItem("asistencia_auth_token") || "");
+    : String(getStore("asistencia_auth_token") || "");
 
   const token = String(fromAuth || "").trim();
   if (!token || token.startsWith("sb_publishable_") || token === "postgrest-direct") {
@@ -84,7 +106,7 @@ const API_BASE_URL = (() => {
     }
   }
 
-  const fromStorage = String(localStorage.getItem("API_BASE_URL") || "").trim();
+  const fromStorage = String(getStore("API_BASE_URL") || "").trim();
   if (fromStorage && fromStorage !== "/api") {
     const clean = fromStorage.replace(/\/+$/, "");
     if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
@@ -100,19 +122,19 @@ window.SUPABASE_PROJECT_URL = SUPABASE_PROJECT_URL;
 window.SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEY;
 window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 window.supabaseClient = null;
-localStorage.setItem("API_BASE_URL", API_BASE_URL);
-const tokenActual = String(localStorage.getItem("asistencia_auth_token") || "").trim();
+setStore("API_BASE_URL", API_BASE_URL);
+const tokenActual = String(getStore("asistencia_auth_token") || "").trim();
 if (
   !tokenActual ||
   tokenActual.startsWith("sb_publishable_") ||
   tokenActual === "postgrest-direct" ||
   (tokenActual.includes(".") && !tokenPerteneceAProyectoActual(tokenActual))
 ) {
-  localStorage.setItem("asistencia_auth_token", SUPABASE_ANON_KEY);
+  setStore("asistencia_auth_token", SUPABASE_ANON_KEY);
 }
-localStorage.setItem(SUPABASE_API_KEY_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY);
+setStore(SUPABASE_API_KEY_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY);
 
-const bc = new BroadcastChannel("victory-data");
+const bc = buildChannel("victory-data");
 
 let pollAlumnosId = null;
 let pollAttendanceId = null;
@@ -174,7 +196,7 @@ async function apiRequest(path, { method = "GET", query = null, body = null, hea
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
-      credentials: "include"
+      credentials: shouldIncludeCredentials(url) ? "include" : "omit"
     });
 
     const raw = await res.text();
@@ -949,7 +971,7 @@ async function descargarCsvEndpoint(path, query = {}, filename = "reporte.csv") 
       ...(supabaseApiKey ? { apikey: supabaseApiKey } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    credentials: "include"
+    credentials: shouldIncludeCredentials(url) ? "include" : "omit"
   });
 
   if (!res.ok) {
