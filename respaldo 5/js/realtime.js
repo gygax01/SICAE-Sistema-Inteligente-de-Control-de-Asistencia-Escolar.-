@@ -2,6 +2,8 @@
    ===== API COMPATIBLE (SUPABASE/POSTGRESQL) ===========
 ====================================================== */
 
+(() => {
+
 const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
 const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
 const SUPABASE_PROJECT_REF = (() => {
@@ -1163,3 +1165,5 @@ window.addEventListener("online", async () => {
 window.addEventListener("offline", () => {
   console.warn("[APP] Sin conexion a internet");
 });
+
+})();
