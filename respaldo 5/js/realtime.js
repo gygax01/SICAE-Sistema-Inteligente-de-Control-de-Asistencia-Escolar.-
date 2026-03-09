@@ -116,6 +116,18 @@ const API_BASE_URL = (() => {
 
   return DEFAULT_API_BASE_URL;
 })();
+const IS_SUPABASE_REST_MODE = esSupabaseRest(API_BASE_URL);
+
+function ordenarLlamadasApi({ backend = [], postgrest = [] } = {}) {
+  if (IS_SUPABASE_REST_MODE) {
+    return Array.isArray(postgrest) ? postgrest : [];
+  }
+
+  return [
+    ...(Array.isArray(backend) ? backend : []),
+    ...(Array.isArray(postgrest) ? postgrest : [])
+  ];
+}
 
 window.API_BASE_URL = API_BASE_URL;
 window.SUPABASE_PROJECT_URL = SUPABASE_PROJECT_URL;
@@ -154,6 +166,42 @@ function pgGte(value) {
 
 function pgLt(value) {
   return `lt.${String(value)}`;
+}
+
+function construirFiltroRangoCreatedAt({ inicioISO = null, finISO = null } = {}) {
+  const filtros = [
+    inicioISO ? `created_at.gte.${inicioISO}` : "",
+    finISO ? `created_at.lt.${finISO}` : ""
+  ].filter(Boolean);
+
+  return filtros.length ? `(${filtros.join(",")})` : null;
+}
+
+function llamadasAttendancePostgrest({ inicioISO = null, finISO = null, order = "asc", alumnoId = null } = {}) {
+  const filtroRango = construirFiltroRangoCreatedAt({ inicioISO, finISO });
+  const baseQuery = {
+    select: "*",
+    ...(filtroRango ? { and: filtroRango } : {}),
+    order: `created_at.${order}`,
+    limit: 10000
+  };
+
+  if (!alumnoId) {
+    return [
+      () => apiRequest("/attendance", { query: baseQuery })
+    ];
+  }
+
+  return [
+    () => apiRequest("/attendance", { query: { ...baseQuery, alumno_id: pgEq(alumnoId) } }),
+    () => apiRequest("/attendance", { query: { ...baseQuery, cliente_id: pgEq(alumnoId) } }),
+    () => apiRequest("/attendance", {
+      query: {
+        ...baseQuery,
+        or: `(alumno_id.eq.${alumnoId},cliente_id.eq.${alumnoId})`
+      }
+    })
+  ];
 }
 
 function esURLAbsoluta(url) {
@@ -380,12 +428,21 @@ async function logEstadoServidor() {
   }
 
   try {
-    await apiTry([
-      () => apiRequest("/health"),
-      () => apiRequest("/status"),
-      () => apiRequest("/alumnos", { query: { limit: 1 } }),
-      () => apiRequest("/", { timeoutMs: 6000 })
-    ], { acceptNull: true });
+    const checks = ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/health"),
+        () => apiRequest("/status"),
+        () => apiRequest("/", { timeoutMs: 6000 })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", { query: { select: "id", limit: 1 } }),
+        () => apiRequest("/attendance", { query: { select: "id", limit: 1 } })
+      ]
+    });
+
+    if (checks.length) {
+      await apiTry(checks, { acceptNull: true });
+    }
 
     console.info(`[API] Conexion OK (${API_BASE_URL})`);
   } catch (err) {
@@ -401,11 +458,15 @@ async function cargarAlumnosIniciales() {
   }
 
   try {
-    const payload = await apiTry([
-      () => apiRequest("/alumnos"),
-      () => apiRequest("/alumnos", { query: { select: "*", order: "nombre.asc", limit: 5000 } }),
-      () => apiRequest("/students")
-    ]);
+    const payload = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/alumnos"),
+        () => apiRequest("/students")
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", { query: { select: "*", order: "nombre.asc", limit: 5000 } })
+      ]
+    }));
 
     const lista = arrayDesdeRespuesta(payload)
       .map(normalizarAlumno)
@@ -439,18 +500,22 @@ async function obtenerAlumnoPorUIDRemoto(uid) {
   if (!normalizado) return null;
 
   try {
-    const payload = await apiTry([
-      () => apiRequest(`/alumnos/by-uid/${encodeURIComponent(normalizado)}`),
-      () => apiRequest(`/alumnos/by_uid/${encodeURIComponent(normalizado)}`),
-      () => apiRequest("/alumnos", { query: { uid: normalizado, limit: 1 } }),
-      () => apiRequest("/alumnos", {
-        query: {
-          select: "*",
-          tarjeta_uid: pgEq(normalizado),
-          limit: 1
-        }
-      })
-    ], { acceptNull: true });
+    const payload = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest(`/alumnos/by-uid/${encodeURIComponent(normalizado)}`),
+        () => apiRequest(`/alumnos/by_uid/${encodeURIComponent(normalizado)}`),
+        () => apiRequest("/alumnos", { query: { uid: normalizado, limit: 1 } })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", {
+          query: {
+            select: "*",
+            tarjeta_uid: pgEq(normalizado),
+            limit: 1
+          }
+        })
+      ]
+    }), { acceptNull: true });
 
     const obj = objetoDesdeRespuesta(payload);
     if (!obj || (!obj.id && !obj.nombre && !obj.tarjeta_uid && !obj.tarjetaUID)) return null;
@@ -470,28 +535,30 @@ async function verificarDuplicadoAlumnoRemoto({ correo, matricula, uid }) {
   const matriculaN = String(matricula || "").trim().toUpperCase();
   const uidN = normalizarUID(uid);
 
-  try {
-    const payload = await apiTry([
-      () => apiRequest("/alumnos/duplicados", {
-        query: { correo: correoN, matricula: matriculaN, uid: uidN }
-      }),
-      () => apiRequest("/alumnos/duplicate", {
-        query: { correo: correoN, matricula: matriculaN, uid: uidN }
-      })
-    ], { acceptNull: true });
+  if (!IS_SUPABASE_REST_MODE) {
+    try {
+      const payload = await apiTry([
+        () => apiRequest("/alumnos/duplicados", {
+          query: { correo: correoN, matricula: matriculaN, uid: uidN }
+        }),
+        () => apiRequest("/alumnos/duplicate", {
+          query: { correo: correoN, matricula: matriculaN, uid: uidN }
+        })
+      ], { acceptNull: true });
 
-    const obj = objetoDesdeRespuesta(payload) || {};
-    const tipo = String(obj.duplicado || obj.tipo || obj.field || "").toLowerCase();
+      const obj = objetoDesdeRespuesta(payload) || {};
+      const tipo = String(obj.duplicado || obj.tipo || obj.field || "").toLowerCase();
 
-    if (tipo === "correo") return "correo";
-    if (tipo === "matricula") return "matricula";
-    if (["tarjeta", "uid", "tarjeta_uid"].includes(tipo)) return "tarjeta";
+      if (tipo === "correo") return "correo";
+      if (tipo === "matricula") return "matricula";
+      if (["tarjeta", "uid", "tarjeta_uid"].includes(tipo)) return "tarjeta";
 
-    if (obj.correo === true) return "correo";
-    if (obj.matricula === true) return "matricula";
-    if (obj.tarjeta === true || obj.uid === true || obj.tarjeta_uid === true) return "tarjeta";
-  } catch (_) {
-    // fallback abajo
+      if (obj.correo === true) return "correo";
+      if (obj.matricula === true) return "matricula";
+      if (obj.tarjeta === true || obj.uid === true || obj.tarjeta_uid === true) return "tarjeta";
+    } catch (_) {
+      // fallback abajo
+    }
   }
 
   try {
@@ -539,18 +606,23 @@ async function actualizarAlumnoSupabase(alumno) {
 
   try {
     const payload = alumnoAPayloadServidor(alumno);
-    const id = encodeURIComponent(String(alumno.id));
+    const idRaw = String(alumno.id);
+    const idPath = encodeURIComponent(idRaw);
 
-    await apiTry([
-      () => apiRequest(`/alumnos/${id}`, { method: "PUT", body: payload }),
-      () => apiRequest(`/alumnos/${id}`, { method: "PATCH", body: payload }),
-      () => apiRequest("/alumnos", {
-        method: "PATCH",
-        query: { id: pgEq(id) },
-        body: payload,
-        headers: { Prefer: "return=representation" }
-      })
-    ]);
+    await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest(`/alumnos/${idPath}`, { method: "PUT", body: payload }),
+        () => apiRequest(`/alumnos/${idPath}`, { method: "PATCH", body: payload })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", {
+          method: "PATCH",
+          query: { id: pgEq(idRaw) },
+          body: payload,
+          headers: { Prefer: "return=representation" }
+        })
+      ]
+    }));
 
     upsertAlumnoLocal(alumno);
     return true;
@@ -564,13 +636,18 @@ async function borrarAlumnoSupabase(id) {
   if (!navigator.onLine) return false;
 
   try {
-    const enc = encodeURIComponent(String(id));
+    const idRaw = String(id);
+    const idPath = encodeURIComponent(idRaw);
 
-    await apiTry([
-      () => apiRequest(`/alumnos/${enc}`, { method: "DELETE" }),
-      () => apiRequest("/alumnos", { method: "DELETE", query: { id: enc } }),
-      () => apiRequest("/alumnos", { method: "DELETE", query: { id: pgEq(enc) } })
-    ], { acceptNull: true });
+    await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest(`/alumnos/${idPath}`, { method: "DELETE" }),
+        () => apiRequest("/alumnos", { method: "DELETE", query: { id: idPath } })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", { method: "DELETE", query: { id: pgEq(idRaw) } })
+      ]
+    }), { acceptNull: true });
 
     const lista = obtenerAlumnos().filter(a => String(a.id) !== String(id));
     guardarAlumnosLocalCompat(lista);
@@ -587,35 +664,21 @@ async function obtenerEventosAttendanceRemotos({ inicioISO = null, finISO = null
 
   try {
     const order = asc ? "asc" : "desc";
-    const filtroAlumno = alumnoId ? { alumno_id: alumnoId, cliente_id: alumnoId } : {};
-
-    const payload = await apiTry([
-      () => apiRequest("/attendance/rango", {
-        query: { inicio: inicioISO, fin: finISO, ...filtroAlumno, order }
-      }),
-      () => apiRequest("/attendance/events", {
-        query: { from: inicioISO, to: finISO, ...filtroAlumno, order }
-      }),
-      () => apiRequest("/attendance", {
-        query: { from: inicioISO, to: finISO, ...filtroAlumno, order }
-      }),
-      () => apiRequest("/attendance", {
-        query: {
-          select: "*",
-          ...(inicioISO || finISO
-            ? {
-              and: `(${[
-                inicioISO ? `created_at.gte.${inicioISO}` : "",
-                finISO ? `created_at.lt.${finISO}` : ""
-              ].filter(Boolean).join(",")})`
-            }
-            : {}),
-          ...(alumnoId ? { alumno_id: pgEq(alumnoId), cliente_id: pgEq(alumnoId) } : {}),
-          order: `created_at.${order}`,
-          limit: 10000
-        }
-      })
-    ]);
+    const filtroAlumnoBackend = alumnoId ? { alumno_id: alumnoId, cliente_id: alumnoId } : {};
+    const payload = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/attendance/rango", {
+          query: { inicio: inicioISO, fin: finISO, ...filtroAlumnoBackend, order }
+        }),
+        () => apiRequest("/attendance/events", {
+          query: { from: inicioISO, to: finISO, ...filtroAlumnoBackend, order }
+        }),
+        () => apiRequest("/attendance", {
+          query: { from: inicioISO, to: finISO, ...filtroAlumnoBackend, order }
+        })
+      ],
+      postgrest: llamadasAttendancePostgrest({ inicioISO, finISO, order, alumnoId })
+    }));
 
     const eventos = arrayDesdeRespuesta(payload)
       .map(normalizarEventoAttendance)
@@ -633,22 +696,24 @@ async function obtenerUltimoTipoAsistenciaHoyRemoto(alumnoId) {
 
   const { inicioISO, finISO } = rangoHoyISO();
 
-  try {
-    const payload = await apiTry([
-      () => apiRequest("/attendance/ultimo-tipo", {
-        query: { alumno_id: alumnoId, cliente_id: alumnoId, inicio: inicioISO, fin: finISO }
-      }),
-      () => apiRequest("/attendance/last-type", {
-        query: { alumno_id: alumnoId, cliente_id: alumnoId, from: inicioISO, to: finISO }
-      })
-    ], { acceptNull: true });
+  if (!IS_SUPABASE_REST_MODE) {
+    try {
+      const payload = await apiTry([
+        () => apiRequest("/attendance/ultimo-tipo", {
+          query: { alumno_id: alumnoId, cliente_id: alumnoId, inicio: inicioISO, fin: finISO }
+        }),
+        () => apiRequest("/attendance/last-type", {
+          query: { alumno_id: alumnoId, cliente_id: alumnoId, from: inicioISO, to: finISO }
+        })
+      ], { acceptNull: true });
 
-    const obj = objetoDesdeRespuesta(payload) || {};
-    const tipo = String(obj.type || obj.ultimo_tipo || obj.accion || "").toLowerCase();
+      const obj = objetoDesdeRespuesta(payload) || {};
+      const tipo = String(obj.type || obj.ultimo_tipo || obj.accion || "").toLowerCase();
 
-    if (tipo === "entrada" || tipo === "salida") return tipo;
-  } catch (_) {
-    // fallback abajo
+      if (tipo === "entrada" || tipo === "salida") return tipo;
+    } catch (_) {
+      // fallback abajo
+    }
   }
 
   const eventos = await obtenerEventosAttendanceRemotos({
@@ -796,6 +861,7 @@ function iniciarRealtimeAttendance() {
 
 async function autocerrarAsistenciasPendientes() {
   if (!navigator.onLine) return;
+  if (IS_SUPABASE_REST_MODE) return;
 
   try {
     await apiTry([
@@ -809,6 +875,7 @@ async function autocerrarAsistenciasPendientes() {
 
 async function migrarUIDEnAttendance(uidAnterior, uidNuevo) {
   if (!navigator.onLine) return;
+  if (IS_SUPABASE_REST_MODE) return;
   if (!uidAnterior || !uidNuevo || uidAnterior === uidNuevo) return;
 
   try {
@@ -831,19 +898,24 @@ async function marcarEventoNFCProcesado(eventId) {
   if (!eventId) return false;
 
   try {
-    const id = encodeURIComponent(String(eventId));
+    const idRaw = String(eventId);
+    const idPath = encodeURIComponent(idRaw);
 
-    await apiTry([
-      () => apiRequest(`/nfc-events/${id}/process`, { method: "POST" }),
-      () => apiRequest(`/nfc-events/${id}`, { method: "PATCH", body: { processed: true } }),
-      () => apiRequest("/nfc-events/process", { method: "POST", body: { id: eventId } }),
-      () => apiRequest("/nfc_events", {
-        method: "PATCH",
-        query: { id: pgEq(id) },
-        body: { processed: true },
-        headers: { Prefer: "return=representation" }
-      })
-    ], { acceptNull: true });
+    await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest(`/nfc-events/${idPath}/process`, { method: "POST" }),
+        () => apiRequest(`/nfc-events/${idPath}`, { method: "PATCH", body: { processed: true } }),
+        () => apiRequest("/nfc-events/process", { method: "POST", body: { id: eventId } })
+      ],
+      postgrest: [
+        () => apiRequest("/nfc_events", {
+          method: "PATCH",
+          query: { id: pgEq(idRaw) },
+          body: { processed: true },
+          headers: { Prefer: "return=representation" }
+        })
+      ]
+    }), { acceptNull: true });
 
     return true;
   } catch (err) {
@@ -855,31 +927,42 @@ async function marcarEventoNFCProcesado(eventId) {
 async function obtenerEventoNFCPendiente() {
   if (!navigator.onLine) return null;
 
-  try {
-    const claim = await apiTry([
+  const claimCalls = ordenarLlamadasApi({
+    backend: [
       () => apiRequest("/nfc-events/claim", { method: "POST" }),
       () => apiRequest("/nfc-events/next", { method: "POST" })
-    ], { acceptNull: true });
+    ],
+    postgrest: []
+  });
 
-    const ev = normalizarEventoNFC(objetoDesdeRespuesta(claim));
-    if (ev) return ev;
-  } catch (_) {
-    // fallback abajo
+  if (claimCalls.length) {
+    try {
+      const claim = await apiTry(claimCalls, { acceptNull: true });
+
+      const ev = normalizarEventoNFC(objetoDesdeRespuesta(claim));
+      if (ev) return ev;
+    } catch (_) {
+      // fallback abajo
+    }
   }
 
   try {
-    const list = await apiTry([
-      () => apiRequest("/nfc-events/pending", { query: { limit: 1 } }),
-      () => apiRequest("/nfc-events", { query: { processed: false, limit: 1 } }),
-      () => apiRequest("/nfc_events", {
-        query: {
-          select: "*",
-          processed: "eq.false",
-          order: "created_at.asc",
-          limit: 1
-        }
-      })
-    ], { acceptNull: true });
+    const list = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/nfc-events/pending", { query: { limit: 1 } }),
+        () => apiRequest("/nfc-events", { query: { processed: false, limit: 1 } })
+      ],
+      postgrest: [
+        () => apiRequest("/nfc_events", {
+          query: {
+            select: "*",
+            processed: "eq.false",
+            order: "created_at.asc",
+            limit: 1
+          }
+        })
+      ]
+    }), { acceptNull: true });
 
     const eventos = arrayDesdeRespuesta(list)
       .map(normalizarEventoNFC)
@@ -896,16 +979,51 @@ async function obtenerEventoNFCPendiente() {
   }
 }
 
+async function construirResumenDashboardLocal() {
+  const alumnos = obtenerAlumnos() || [];
+  const asistenciasLocales = obtenerAsistencias() || [];
+  const base = {
+    total_alumnos: alumnos.length,
+    presentes: asistenciasLocales.filter(x => x?.entrada_ts && !x?.salida_ts).length,
+    entradas_hoy: 0,
+    salidas_hoy: 0,
+    asistencias_hoy: asistenciasLocales.length,
+    recientes: []
+  };
+
+  const { inicioISO: ini, finISO: fn } = rangoHoyISO();
+  const eventos = await obtenerEventosAttendanceRemotos({ inicioISO: ini, finISO: fn, asc: true });
+  if (!Array.isArray(eventos)) return base;
+
+  const entradas = eventos.filter(e => e.type === "entrada").length;
+  const salidas = eventos.filter(e => e.type === "salida").length;
+  const lastByPersona = new Map();
+
+  eventos.forEach(e => {
+    const key = String(e.alumno_id || e.uid || "");
+    if (!key) return;
+    lastByPersona.set(key, e.type);
+  });
+
+  const presentes = Array.from(lastByPersona.values()).filter(t => t === "entrada").length;
+
+  return {
+    total_alumnos: alumnos.length,
+    presentes,
+    entradas_hoy: entradas,
+    salidas_hoy: salidas,
+    asistencias_hoy: eventos.length,
+    recientes: eventos.slice(-20).reverse()
+  };
+}
+
 async function obtenerResumenDashboardRemoto({ inicioISO = null, finISO = null } = {}) {
   if (!navigator.onLine) {
-    return {
-      total_alumnos: (obtenerAlumnos() || []).length,
-      presentes: (obtenerAsistencias() || []).filter(x => x?.entrada_ts && !x?.salida_ts).length,
-      entradas_hoy: 0,
-      salidas_hoy: 0,
-      asistencias_hoy: (obtenerAsistencias() || []).length,
-      recientes: []
-    };
+    return construirResumenDashboardLocal();
+  }
+
+  if (IS_SUPABASE_REST_MODE) {
+    return construirResumenDashboardLocal();
   }
 
   try {
@@ -919,41 +1037,7 @@ async function obtenerResumenDashboardRemoto({ inicioISO = null, finISO = null }
     return obj;
   } catch (err) {
     console.warn("[DASHBOARD] No disponible, usando resumen local:", err?.message || err);
-
-    const { inicioISO: ini, finISO: fn } = rangoHoyISO();
-    const eventos = await obtenerEventosAttendanceRemotos({ inicioISO: ini, finISO: fn, asc: true });
-    const alumnos = obtenerAlumnos() || [];
-
-    if (!Array.isArray(eventos)) {
-      return {
-        total_alumnos: alumnos.length,
-        presentes: (obtenerAsistencias() || []).filter(x => x?.entrada_ts && !x?.salida_ts).length,
-        entradas_hoy: 0,
-        salidas_hoy: 0,
-        asistencias_hoy: (obtenerAsistencias() || []).length,
-        recientes: []
-      };
-    }
-
-    const entradas = eventos.filter(e => e.type === "entrada").length;
-    const salidas = eventos.filter(e => e.type === "salida").length;
-    const lastByPersona = new Map();
-    eventos.forEach(e => {
-      const key = String(e.alumno_id || e.uid || "");
-      if (!key) return;
-      lastByPersona.set(key, e.type);
-    });
-
-    const presentes = Array.from(lastByPersona.values()).filter(t => t === "entrada").length;
-
-    return {
-      total_alumnos: alumnos.length,
-      presentes,
-      entradas_hoy: entradas,
-      salidas_hoy: salidas,
-      asistencias_hoy: eventos.length,
-      recientes: eventos.slice(-20).reverse()
-    };
+    return construirResumenDashboardLocal();
   }
 }
 
