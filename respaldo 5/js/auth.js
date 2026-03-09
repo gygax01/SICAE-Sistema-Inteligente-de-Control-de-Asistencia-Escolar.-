@@ -5,20 +5,42 @@
 const AUTH_TOKEN_KEY = "asistencia_auth_token";
 const AUTH_USER_KEY = "asistencia_auth_user";
 const AUTH_BYPASS_KEY = "AUTH_BYPASS";
-const SUPABASE_REST_URL = "https://vqylvfutuiococveggej.supabase.co/rest/v1";
+const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
+const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
 
 function esSupabaseRest(url) {
   return /supabase\.co\/rest\/v1$/i.test(String(url || "").trim().replace(/\/+$/, ""));
 }
 
+function isSupabaseRestOfCurrentProject(url) {
+  const clean = String(url || "").trim().replace(/\/+$/, "");
+  if (!esSupabaseRest(clean)) return false;
+  try {
+    return new URL(clean).host === new URL(SUPABASE_REST_URL).host;
+  } catch {
+    return false;
+  }
+}
+
 function getApiBaseURLForAuth() {
   const fromWindow = String(window.API_BASE_URL || "").trim();
-  if (fromWindow) return fromWindow.replace(/\/+$/, "");
+  if (fromWindow) {
+    const clean = fromWindow.replace(/\/+$/, "");
+    if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
+      return clean;
+    }
+  }
 
   const fromStorage = String(localStorage.getItem("API_BASE_URL") || "").trim();
-  if (fromStorage && fromStorage !== "/api") return fromStorage.replace(/\/+$/, "");
+  if (fromStorage && fromStorage !== "/api") {
+    const clean = fromStorage.replace(/\/+$/, "");
+    if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
+      return clean;
+    }
+  }
 
   return DEFAULT_API_BASE_URL;
 }
@@ -38,16 +60,21 @@ function getAuthToken() {
   return String(localStorage.getItem(AUTH_TOKEN_KEY) || "").trim();
 }
 
+function resolveDefaultAuthToken() {
+  const token = getAuthToken();
+  if (!token || token.startsWith("sb_publishable_") || token === "postgrest-direct") {
+    return SUPABASE_ANON_KEY;
+  }
+  return token;
+}
+
 function inicializarSupabaseDirecto() {
   const apiBase = getApiBaseURLForAuth();
   if (!esSupabaseRest(apiBase)) return;
 
   localStorage.setItem("API_BASE_URL", apiBase);
 
-  const token = getAuthToken();
-  if (!token) {
-    localStorage.setItem(AUTH_TOKEN_KEY, SUPABASE_PUBLISHABLE_KEY);
-  }
+  localStorage.setItem(AUTH_TOKEN_KEY, resolveDefaultAuthToken());
 
   if (!isAuthBypassEnabled()) {
     localStorage.setItem(AUTH_BYPASS_KEY, "true");
@@ -55,7 +82,7 @@ function inicializarSupabaseDirecto() {
 
   const currentUser = getAuthUser();
   if (!currentUser?.id) {
-    setAuthSession(localStorage.getItem(AUTH_TOKEN_KEY) || SUPABASE_PUBLISHABLE_KEY, {
+    setAuthSession(localStorage.getItem(AUTH_TOKEN_KEY) || SUPABASE_ANON_KEY, {
       id: "supabase-direct",
       username: "supabase",
       nombre: "Modo Supabase",
@@ -222,8 +249,10 @@ window.authFetchMe = authFetchMe;
 window.isAuthBypassEnabled = isAuthBypassEnabled;
 window.enableAuthBypass = enableAuthBypass;
 window.DEFAULT_API_BASE_URL = DEFAULT_API_BASE_URL;
+window.SUPABASE_PROJECT_URL = SUPABASE_PROJECT_URL;
 window.SUPABASE_REST_URL = SUPABASE_REST_URL;
 window.SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEY;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
 window.addEventListener("load", async () => {
   inicializarSupabaseDirecto();
