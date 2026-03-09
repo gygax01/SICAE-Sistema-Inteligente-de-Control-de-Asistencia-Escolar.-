@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Asistencia Escolar</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body data-requires-auth="true">
+  <header class="header-brand">
+    <div class="brand">
+      <img src="img/logo.png" alt="Control Escolar">
+      <div>
+        <h2>Asistencias del dia</h2>
+        <p class="brand-sub">Sistema de Asistencia Escolar</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-sec" data-auth-logout>Salir</button>
+    </div>
+  </header>
+
+  <section class="dashboard-grid">
+    <article class="stat-card">
+      <h3>Total alumnos</h3>
+      <p id="dashTotalAlumnos">0</p>
+    </article>
+    <article class="stat-card is-green">
+      <h3>Presentes</h3>
+      <p id="dashPresentes">0</p>
+    </article>
+    <article class="stat-card is-orange">
+      <h3>Entradas hoy</h3>
+      <p id="dashEntradas">0</p>
+    </article>
+    <article class="stat-card">
+      <h3>Salidas hoy</h3>
+      <p id="dashSalidas">0</p>
+    </article>
+  </section>
+
+  <div class="estado-sistema">
+    <span id="contadorAforo" class="contador">Dentro: <strong>0</strong></span>
+    <span id="estadoLector" class="lector off">Lector inactivo</span>
+    <span id="estadoConexion" class="lector off">Offline</span>
+  </div>
+
+  <div class="panel-acciones">
+    <button class="destacado" data-role-allow="admin,capturista" onclick="location.href='registro.html'">Registrar alumno</button>
+    <button data-role-allow="admin,capturista" onclick="location.href='registro.html#importacionExcel'">Carga masiva Excel</button>
+    <button onclick="location.href='historial.html'">Historial</button>
+    <button onclick="descargarReporte('asistencias')">Exportar asistencias CSV</button>
+    <button onclick="descargarReporte('diario')">Exportar resumen diario</button>
+  </div>
+
+  <p class="leyenda">Pase la tarjeta del alumno para registrar entrada o salida automaticamente.</p>
+
+  <div id="contenedorTabla" class="table-shell" style="max-height:68vh;">
+    <p id="estadoTabla" class="table-status loading">Cargando asistencias...</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Alumno</th>
+          <th>Matricula</th>
+          <th>Grado / Grupo</th>
+          <th>Entrada</th>
+          <th>Salida</th>
+        </tr>
+      </thead>
+      <tbody id="tablaAsistencias"></tbody>
+    </table>
+  </div>
+
+  <div class="confirmacion" id="confirmacion">
+    <div class="box">
+      <h1 id="tituloConfirmacion"></h1>
+      <p id="mensajeConfirmacion"></p>
+    </div>
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/asistencias.js"></script>
+  <script src="js/realtime.js"></script>
+  <script src="js/nfc.js"></script>
+
+  <script>
+    let ultimoUIDLeido = null;
+    let ultimoTSLeido = 0;
+    const COOLDOWN_LECTURA_MS = 3000;
+    const HEARTBEAT_STALE_MS = 20000;
+
+    let estadoCanalNFC = "INIT";
+    let ultimoHeartbeatLector = 0;
+    let monitorHeartbeatId = null;
+    const alumnosEnProceso = new Set();
+
+    window.addEventListener("load", async () => {
+      const estadoLector = document.getElementById("estadoLector");
+      const estadoConexion = document.getElementById("estadoConexion");
+
+      actualizarEstadoConexion(estadoConexion);
+      window.addEventListener("online", () => actualizarEstadoConexion(estadoConexion));
+      window.addEventListener("offline", () => actualizarEstadoConexion(estadoConexion));
+
+      if (typeof ensureAlumnosCargados === "function") {
+        await ensureAlumnosCargados();
+      }
+
+      renderTablaConEstado();
+      actualizarContador();
+      await actualizarDashboard();
+
+      iniciarLecturaNFCIndex(estadoLector);
+      iniciarMonitorHeartbeat(estadoLector);
+
+      setInterval(() => {
+        actualizarDashboard();
+      }, 8000);
+    });
+
+    function setEstadoTabla(msg, tipo = "loading") {
+      const el = document.getElementById("estadoTabla");
+      if (!el) return;
+
+      el.textContent = msg || "";
+      el.className = `table-status ${tipo}`;
+      el.style.display = msg ? "block" : "none";
+    }
+
+    function renderTablaConEstado() {
+      cargarAsistencias();
+      const filas = document.querySelectorAll("#tablaAsistencias tr");
+      if (!filas.length) {
+        setEstadoTabla("Sin asistencias registradas hoy.", "empty");
+      } else {
+        setEstadoTabla("", "ok");
+      }
+    }
+
+    function actualizarEstadoConexion(el) {
+      if (!el) return;
+      if (navigator.onLine) {
+        el.textContent = "Online";
+        el.className = "lector on";
+        return;
+      }
+      el.textContent = "Offline";
+      el.className = "lector off";
+    }
+
+    function setEstadoLector(el, modo, texto) {
+      if (!el) return;
+      el.className = `lector ${modo}`;
+      el.textContent = texto;
+    }
+
+    function actualizarEstadoCanal(estadoLector, status) {
+      const s = String(status || "").toUpperCase();
+      estadoCanalNFC = s;
+
+      if (s === "SUBSCRIBED") {
+        ultimoHeartbeatLector = Date.now();
+        setEstadoLector(estadoLector, "on", "Lector activo");
+        return;
+      }
+
+      if (s === "RECONNECTING") {
+        setEstadoLector(estadoLector, "warn", "Reconectando lector");
+        return;
+      }
+
+      if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED", "ERROR_NO_SUPABASE", "ERROR_NO_API"].includes(s)) {
+        setEstadoLector(estadoLector, "off", "Lector sin senal");
+      }
+    }
+
+    function marcarHeartbeatLector(estadoLector, detalle = "") {
+      ultimoHeartbeatLector = Date.now();
+      if (estadoCanalNFC !== "SUBSCRIBED") return;
+      const sufijo = detalle ? ` (${detalle})` : "";
+      setEstadoLector(estadoLector, "on", `Lector activo${sufijo}`);
+    }
+
+    function iniciarMonitorHeartbeat(estadoLector) {
+      if (monitorHeartbeatId) clearInterval(monitorHeartbeatId);
+
+      monitorHeartbeatId = setInterval(() => {
+        if (!estadoLector || estadoCanalNFC !== "SUBSCRIBED") return;
+
+        const delta = Date.now() - ultimoHeartbeatLector;
+        if (!ultimoHeartbeatLector || delta > HEARTBEAT_STALE_MS) {
+          setEstadoLector(estadoLector, "warn", "Activo sin lecturas recientes");
+        }
+      }, 3000);
+    }
+
+    async function actualizarDashboard() {
+      if (typeof obtenerResumenDashboardRemoto !== "function") return;
+
+      try {
+        const data = await obtenerResumenDashboardRemoto();
+        if (!data) return;
+
+        document.getElementById("dashTotalAlumnos").textContent = data.total_alumnos ?? 0;
+        document.getElementById("dashPresentes").textContent = data.presentes ?? 0;
+        document.getElementById("dashEntradas").textContent = data.entradas_hoy ?? 0;
+        document.getElementById("dashSalidas").textContent = data.salidas_hoy ?? 0;
+      } catch (err) {
+        console.warn("[DASHBOARD] Error:", err?.message || err);
+      }
+    }
+
+    async function descargarReporte(tipo) {
+      try {
+        if (tipo === "asistencias" && typeof descargarReporteAsistenciasCsv === "function") {
+          await descargarReporteAsistenciasCsv();
+          return;
+        }
+
+        if (tipo === "diario" && typeof descargarReporteDiarioCsv === "function") {
+          await descargarReporteDiarioCsv();
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+        mostrarConfirmacion("error", "Error de reporte", "No se pudo descargar el archivo CSV");
+      }
+    }
+
+    function mostrarConfirmacion(tipo, titulo, mensaje) {
+      const box = document.getElementById("confirmacion");
+      document.getElementById("tituloConfirmacion").textContent = titulo;
+      document.getElementById("mensajeConfirmacion").textContent = mensaje;
+      box.className = `confirmacion ${tipo}`;
+      box.style.display = "flex";
+
+      setTimeout(() => {
+        box.style.display = "none";
+      }, 2200);
+    }
+
+    function iniciarLecturaNFCIndex(estadoLector) {
+      if (!estadoLector) return;
+      setEstadoLector(estadoLector, "warn", "Conectando lector...");
+
+      if (typeof iniciarNFCControlado !== "function") return;
+
+      iniciarNFCControlado({
+        onUID: uid => {
+          marcarHeartbeatLector(estadoLector, "lectura recibida");
+          procesarTarjeta(uid);
+        },
+        onHeartbeat: evento => {
+          marcarHeartbeatLector(estadoLector, `ultima ${horaDesdeTS(evento?.ts || Date.now())}`);
+        },
+        onStatus: status => {
+          actualizarEstadoCanal(estadoLector, status);
+        },
+        onTimeout: () => {
+          if (estadoCanalNFC === "SUBSCRIBED") {
+            setEstadoLector(estadoLector, "warn", "Esperando tarjeta...");
+          }
+        },
+        onError: () => {
+          setEstadoLector(estadoLector, "off", "Lector con error");
+          if (typeof detenerNFC === "function") detenerNFC();
+          setTimeout(() => iniciarLecturaNFCIndex(estadoLector), 1800);
+        }
+      });
+    }
+
+    function alumnoDentroLocal(alumnoId) {
+      const asistencias = obtenerAsistencias();
+      if (!Array.isArray(asistencias)) return false;
+
+      return asistencias.some(a =>
+        a &&
+        a.fecha === hoy() &&
+        String(a.alumno_id || "") === String(alumnoId) &&
+        a.entrada_ts &&
+        !a.salida_ts
+      );
+    }
+
+    async function resolverAccionEsperada(alumnoId) {
+      const estadoLocal = alumnoDentroLocal(alumnoId) ? "dentro" : "fuera";
+
+      if (!navigator.onLine || typeof obtenerUltimoTipoAsistenciaHoyRemoto !== "function") {
+        return {
+          accionEsperada: estadoLocal === "dentro" ? "salida" : "entrada",
+          estadoActual: estadoLocal,
+          fuente: "local"
+        };
+      }
+
+      const ultimoTipo = await obtenerUltimoTipoAsistenciaHoyRemoto(alumnoId);
+      if (!ultimoTipo) {
+        return {
+          accionEsperada: estadoLocal === "dentro" ? "salida" : "entrada",
+          estadoActual: estadoLocal,
+          fuente: "local"
+        };
+      }
+
+      const estadoRemoto = ultimoTipo === "entrada" ? "dentro" : "fuera";
+      return {
+        accionEsperada: estadoRemoto === "dentro" ? "salida" : "entrada",
+        estadoActual: estadoRemoto,
+        ultimoTipo,
+        fuente: "remoto"
+      };
+    }
+
+    async function registrarAsistenciaConControl({ alumnoId, uid, accion }) {
+      if (typeof registrarAsistenciaServidor !== "function") {
+        throw new Error("registrarAsistenciaServidor no disponible");
+      }
+
+      const payload = {
+        id: crypto.randomUUID(),
+        alumno_id: alumnoId,
+        uid,
+        created_at: new Date().toISOString(),
+        type: accion,
+        source: "wifi",
+        device_id: "pc_control_escolar"
+      };
+
+      return registrarAsistenciaServidor(payload);
+    }
+
+    function obtenerAlumnoLocalPorUID(uid) {
+      const alumnos = typeof obtenerAlumnos === "function" ? obtenerAlumnos() : safeGet("alumnos");
+      return alumnos.find(a => normalizarUID(a?.tarjetaUID || a?.tarjeta_uid) === uid) || null;
+    }
+
+    async function obtenerAlumnoPorUID(uid) {
+      const local = obtenerAlumnoLocalPorUID(uid);
+      if (local) return local;
+
+      if (typeof obtenerAlumnoPorUIDRemoto === "function") {
+        const remoto = await obtenerAlumnoPorUIDRemoto(uid);
+        if (remoto) return remoto;
+      }
+
+      return null;
+    }
+
+    async function procesarTarjeta(uid) {
+      uid = normalizarUID(uid);
+      const ahoraMs = Date.now();
+
+      if (uid === ultimoUIDLeido && (ahoraMs - ultimoTSLeido) < COOLDOWN_LECTURA_MS) {
+        return;
+      }
+
+      ultimoUIDLeido = uid;
+      ultimoTSLeido = ahoraMs;
+      let alumnoIdProcesado = null;
+
+      try {
+        const alumno = await obtenerAlumnoPorUID(uid);
+
+        if (!alumno || !alumno.id) {
+          mostrarConfirmacion("error", "Tarjeta no registrada", "Registre al alumno primero");
+          return;
+        }
+
+        if (alumnosEnProceso.has(alumno.id)) {
+          return;
+        }
+
+        alumnoIdProcesado = alumno.id;
+        alumnosEnProceso.add(alumno.id);
+
+        const control = await resolverAccionEsperada(alumno.id);
+        const accionEsperada = control.accionEsperada;
+
+        const resultado = await registrarAsistenciaConControl({
+          alumnoId: alumno.id,
+          uid,
+          accion: accionEsperada
+        });
+
+        if (resultado?.accion !== accionEsperada) {
+          mostrarConfirmacion("error", "Secuencia invalida", "El sistema detecto una accion fuera de orden");
+          return;
+        }
+
+        if (resultado.accion === "entrada") {
+          mostrarConfirmacion("entrada", "Entrada registrada", alumno.nombre || "Alumno");
+        } else {
+          mostrarConfirmacion("salida", "Salida registrada", alumno.nombre || "Alumno");
+        }
+
+        if (typeof reconstruirAsistenciasHoy === "function") {
+          await reconstruirAsistenciasHoy();
+        }
+
+        renderTablaConEstado();
+        actualizarContador();
+        await actualizarDashboard();
+      } catch (err) {
+        console.error("[INDEX] Error procesando tarjeta:", err);
+        mostrarConfirmacion("error", "Error de lectura", "Intente nuevamente");
+      } finally {
+        if (alumnoIdProcesado) {
+          alumnosEnProceso.delete(alumnoIdProcesado);
+        }
+      }
+    }
+
+    const canal = new BroadcastChannel("victory-data");
+    canal.onmessage = async e => {
+      if (e.data === "asistencias") {
+        renderTablaConEstado();
+        actualizarContador();
+        await actualizarDashboard();
+      }
+    };
+
+    window.addEventListener("storage", async e => {
+      if (e.key === "asistencias") {
+        renderTablaConEstado();
+        actualizarContador();
+        await actualizarDashboard();
+      }
+    });
+  </script>
+</body>
+</html>

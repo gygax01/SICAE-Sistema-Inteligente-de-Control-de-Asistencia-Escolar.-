@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | Sistema de Asistencia Escolar</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-card">
+      <img src="img/logo.png" alt="Logo CECyTE" class="login-logo">
+      <h1>Sistema de Asistencia Escolar</h1>
+      <p class="login-sub">Inicia sesion o entra en modo API directa.</p>
+
+      <form id="formLogin" class="login-form" autocomplete="off">
+        <label>
+          Usuario
+          <input id="username" type="text" placeholder="admin" required>
+        </label>
+
+        <label>
+          Contrasena
+          <input id="password" type="password" placeholder="********" required>
+        </label>
+
+        <label>
+          API base (opcional)
+          <input id="apiBase" type="text" placeholder="/api o http://IP:3000/api">
+        </label>
+
+        <button type="submit" id="btnLogin" class="btn-login">Entrar</button>
+      </form>
+
+      <p id="loginMsg" class="login-msg">API objetivo: <strong>/api</strong></p>
+    </section>
+  </main>
+
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    const form = document.getElementById("formLogin");
+    const msg = document.getElementById("loginMsg");
+    const btn = document.getElementById("btnLogin");
+    const apiInput = document.getElementById("apiBase");
+
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "index.html";
+
+    const apiSaved = localStorage.getItem("API_BASE_URL");
+    if (apiSaved) {
+      apiInput.value = apiSaved;
+    } else {
+      apiInput.value = window.DEFAULT_API_BASE_URL || "/api";
+      localStorage.setItem("API_BASE_URL", apiInput.value.trim().replace(/\/+$/, ""));
+    }
+
+    window.addEventListener("load", async () => {
+      if (typeof isAuthBypassEnabled === "function" && isAuthBypassEnabled()) {
+        location.href = next;
+        return;
+      }
+
+      const token = getAuthToken();
+      if (!token) return;
+
+      try {
+        const me = await authFetchMe();
+        if (me?.id) {
+          setAuthSession(token, me);
+          location.href = next;
+        }
+      } catch {
+        clearAuthSession({ redirect: false });
+      }
+    });
+
+    function setMsg(texto, tipo = "info") {
+      msg.textContent = texto;
+      msg.className = `login-msg ${tipo}`;
+    }
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      const customApi = apiInput.value.trim();
+
+      if (!username || !password) {
+        setMsg("Completa usuario y contrasena", "error");
+        return;
+      }
+
+      if (customApi) {
+        localStorage.setItem("API_BASE_URL", customApi.replace(/\/+$/, ""));
+      }
+
+      const base = (localStorage.getItem("API_BASE_URL") || window.DEFAULT_API_BASE_URL || "/api").replace(/\/+$/, "");
+
+      btn.disabled = true;
+      setMsg("Validando credenciales...", "info");
+
+      try {
+        const res = await fetch(`${base}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if ((res.status === 404 || res.status === 405) && typeof enableAuthBypass === "function") {
+          const bypassUser = {
+            id: "postgrest-direct",
+            username: username || "api",
+            nombre: "Modo API Directa",
+            rol: "admin"
+          };
+          setAuthSession("postgrest-direct", bypassUser);
+          enableAuthBypass(bypassUser);
+          setMsg("API sin /auth/login detectada. Entrando en modo directo.", "ok");
+          setTimeout(() => {
+            location.href = next;
+          }, 450);
+          return;
+        }
+
+        if (!res.ok || !data?.token) {
+          throw new Error(data?.error || "Credenciales invalidas");
+        }
+
+        setAuthSession(data.token, data.user || null);
+
+        try {
+          const me = await authFetchMe();
+          if (me?.id) {
+            setAuthSession(data.token, me);
+          }
+        } catch {
+          // usamos user del login
+        }
+
+        setMsg("Sesion iniciada. Redirigiendo...", "ok");
+        setTimeout(() => {
+          location.href = next;
+        }, 500);
+      } catch (err) {
+        const puedeBypass = typeof enableAuthBypass === "function";
+        if (puedeBypass) {
+          const bypassUser = {
+            id: "postgrest-direct",
+            username: username || "api",
+            nombre: "Modo API Directa",
+            rol: "admin"
+          };
+          setAuthSession("postgrest-direct", bypassUser);
+          enableAuthBypass(bypassUser);
+          setMsg("Entraste en modo API directa (sin login).", "ok");
+          setTimeout(() => {
+            location.href = next;
+          }, 450);
+          return;
+        }
+
+        console.error(err);
+        setMsg(err?.message || "No se pudo iniciar sesion", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
