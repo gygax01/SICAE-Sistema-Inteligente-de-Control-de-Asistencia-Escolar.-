@@ -2,10 +2,26 @@
    ===== API COMPATIBLE (SUPABASE/POSTGRESQL) ===========
 ====================================================== */
 
-const SUPABASE_REST_URL = "https://vqylvfutuiococveggej.supabase.co/rest/v1";
+const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
+const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
 const SUPABASE_API_KEY_STORAGE_KEY = "SUPABASE_API_KEY";
+
+function esSupabaseRest(url) {
+  return /supabase\.co\/rest\/v1$/i.test(String(url || "").trim().replace(/\/+$/, ""));
+}
+
+function isSupabaseRestOfCurrentProject(url) {
+  const clean = String(url || "").trim().replace(/\/+$/, "");
+  if (!esSupabaseRest(clean)) return false;
+  try {
+    return new URL(clean).host === new URL(SUPABASE_REST_URL).host;
+  } catch {
+    return false;
+  }
+}
 
 function resolveSupabaseApiKey() {
   const fromWindow = String(window.SUPABASE_PUBLISHABLE_KEY || "").trim();
@@ -17,26 +33,49 @@ function resolveSupabaseApiKey() {
   return SUPABASE_PUBLISHABLE_KEY;
 }
 
+function resolveBearerToken() {
+  const fromAuth = typeof getAuthToken === "function"
+    ? getAuthToken()
+    : String(localStorage.getItem("asistencia_auth_token") || "");
+
+  const token = String(fromAuth || "").trim();
+  if (!token || token.startsWith("sb_publishable_") || token === "postgrest-direct") {
+    return SUPABASE_ANON_KEY;
+  }
+  return token;
+}
+
 const API_BASE_URL = (() => {
   const fromWindow = String(window.API_BASE_URL || "").trim();
-  if (fromWindow) return fromWindow.replace(/\/+$/, "");
+  if (fromWindow) {
+    const clean = fromWindow.replace(/\/+$/, "");
+    if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
+      return clean;
+    }
+  }
 
   const fromStorage = String(localStorage.getItem("API_BASE_URL") || "").trim();
-  if (fromStorage && fromStorage !== "/api") return fromStorage.replace(/\/+$/, "");
+  if (fromStorage && fromStorage !== "/api") {
+    const clean = fromStorage.replace(/\/+$/, "");
+    if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
+      return clean;
+    }
+  }
 
   return DEFAULT_API_BASE_URL;
 })();
 
 window.API_BASE_URL = API_BASE_URL;
-window.SUPABASE_PUBLISHABLE_KEY = resolveSupabaseApiKey();
+window.SUPABASE_PROJECT_URL = SUPABASE_PROJECT_URL;
+window.SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEY;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 window.supabaseClient = null;
 localStorage.setItem("API_BASE_URL", API_BASE_URL);
-if (!localStorage.getItem("asistencia_auth_token")) {
-  localStorage.setItem("asistencia_auth_token", resolveSupabaseApiKey());
+const tokenActual = String(localStorage.getItem("asistencia_auth_token") || "").trim();
+if (!tokenActual || tokenActual.startsWith("sb_publishable_") || tokenActual === "postgrest-direct") {
+  localStorage.setItem("asistencia_auth_token", SUPABASE_ANON_KEY);
 }
-if (!localStorage.getItem(SUPABASE_API_KEY_STORAGE_KEY)) {
-  localStorage.setItem(SUPABASE_API_KEY_STORAGE_KEY, resolveSupabaseApiKey());
-}
+localStorage.setItem(SUPABASE_API_KEY_STORAGE_KEY, SUPABASE_PUBLISHABLE_KEY);
 
 const bc = new BroadcastChannel("victory-data");
 
@@ -88,9 +127,7 @@ async function apiRequest(path, { method = "GET", query = null, body = null, hea
   try {
     const url = construirURL(path, query || {});
     const supabaseApiKey = resolveSupabaseApiKey();
-    const token = (typeof getAuthToken === "function"
-      ? getAuthToken()
-      : String(localStorage.getItem("asistencia_auth_token") || "")) || supabaseApiKey;
+    const token = resolveBearerToken();
 
     const res = await fetch(url, {
       method,
@@ -867,9 +904,7 @@ async function descargarCsvEndpoint(path, query = {}, filename = "reporte.csv") 
   if (!navigator.onLine) return false;
 
   const supabaseApiKey = resolveSupabaseApiKey();
-  const token = (typeof getAuthToken === "function"
-    ? getAuthToken()
-    : String(localStorage.getItem("asistencia_auth_token") || "")) || supabaseApiKey;
+  const token = resolveBearerToken();
 
   const url = construirURL(path, query);
 
