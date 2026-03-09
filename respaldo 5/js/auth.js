@@ -19,6 +19,15 @@ const SUPABASE_PROJECT_REF = (() => {
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
+const getStore = typeof storageGetItem === "function"
+  ? storageGetItem
+  : key => localStorage.getItem(key);
+const setStore = typeof storageSetItem === "function"
+  ? storageSetItem
+  : (key, value) => localStorage.setItem(key, value);
+const removeStore = typeof storageRemoveItem === "function"
+  ? storageRemoveItem
+  : key => localStorage.removeItem(key);
 
 function esSupabaseRest(url) {
   return /supabase\.co\/rest\/v1$/i.test(String(url || "").trim().replace(/\/+$/, ""));
@@ -34,6 +43,19 @@ function isSupabaseRestOfCurrentProject(url) {
   }
 }
 
+function isSupabaseRequestUrl(url) {
+  try {
+    const parsed = new URL(String(url || ""), window.location.origin);
+    return /\.supabase\.co$/i.test(parsed.hostname) && /^\/rest\/v1(\/|$)/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function shouldIncludeCredentials(url) {
+  return !isSupabaseRequestUrl(url);
+}
+
 function getApiBaseURLForAuth() {
   const fromWindow = String(window.API_BASE_URL || "").trim();
   if (fromWindow) {
@@ -43,7 +65,7 @@ function getApiBaseURLForAuth() {
     }
   }
 
-  const fromStorage = String(localStorage.getItem("API_BASE_URL") || "").trim();
+  const fromStorage = String(getStore("API_BASE_URL") || "").trim();
   if (fromStorage && fromStorage !== "/api") {
     const clean = fromStorage.replace(/\/+$/, "");
     if (!esSupabaseRest(clean) || isSupabaseRestOfCurrentProject(clean)) {
@@ -55,18 +77,18 @@ function getApiBaseURLForAuth() {
 }
 
 function isAuthBypassEnabled() {
-  return String(localStorage.getItem(AUTH_BYPASS_KEY) || "").trim().toLowerCase() === "true";
+  return String(getStore(AUTH_BYPASS_KEY) || "").trim().toLowerCase() === "true";
 }
 
 function enableAuthBypass(user = null) {
-  localStorage.setItem(AUTH_BYPASS_KEY, "true");
+  setStore(AUTH_BYPASS_KEY, "true");
   if (user) {
     setAuthSession(getAuthToken() || "postgrest-direct", user);
   }
 }
 
 function getAuthToken() {
-  return String(localStorage.getItem(AUTH_TOKEN_KEY) || "").trim();
+  return String(getStore(AUTH_TOKEN_KEY) || "").trim();
 }
 
 function parseJwtPayload(token) {
@@ -102,17 +124,17 @@ function inicializarSupabaseDirecto() {
   const apiBase = getApiBaseURLForAuth();
   if (!esSupabaseRest(apiBase)) return;
 
-  localStorage.setItem("API_BASE_URL", apiBase);
+  setStore("API_BASE_URL", apiBase);
 
-  localStorage.setItem(AUTH_TOKEN_KEY, resolveDefaultAuthToken());
+  setStore(AUTH_TOKEN_KEY, resolveDefaultAuthToken());
 
   if (!isAuthBypassEnabled()) {
-    localStorage.setItem(AUTH_BYPASS_KEY, "true");
+    setStore(AUTH_BYPASS_KEY, "true");
   }
 
   const currentUser = getAuthUser();
   if (!currentUser?.id) {
-    setAuthSession(localStorage.getItem(AUTH_TOKEN_KEY) || SUPABASE_ANON_KEY, {
+    setAuthSession(getStore(AUTH_TOKEN_KEY) || SUPABASE_ANON_KEY, {
       id: "supabase-direct",
       username: "supabase",
       nombre: "Modo Supabase",
@@ -123,7 +145,7 @@ function inicializarSupabaseDirecto() {
 
 function getAuthUser() {
   try {
-    const raw = localStorage.getItem(AUTH_USER_KEY);
+    const raw = getStore(AUTH_USER_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -131,14 +153,14 @@ function getAuthUser() {
 }
 
 function setAuthSession(token, user) {
-  localStorage.setItem(AUTH_TOKEN_KEY, String(token || ""));
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user || null));
+  setStore(AUTH_TOKEN_KEY, String(token || ""));
+  setStore(AUTH_USER_KEY, JSON.stringify(user || null));
 }
 
 function clearAuthSession({ redirect = true } = {}) {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(AUTH_USER_KEY);
-  localStorage.removeItem(AUTH_BYPASS_KEY);
+  removeStore(AUTH_TOKEN_KEY);
+  removeStore(AUTH_USER_KEY);
+  removeStore(AUTH_BYPASS_KEY);
 
   if (redirect) {
     const next = encodeURIComponent(location.pathname.split("/").pop() || "index.html");
@@ -177,7 +199,7 @@ async function authFetchMe() {
     headers: {
       Authorization: `Bearer ${token}`
     },
-    credentials: "include"
+    credentials: shouldIncludeCredentials(base) ? "include" : "omit"
   });
 
   if (!res.ok) {
