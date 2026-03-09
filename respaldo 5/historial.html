@@ -35,9 +35,9 @@
   <p id="estadoHistorial" class="screen-status loading">Cargando historial...</p>
   <div class="historial-container" id="listaHistorial"></div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/realtime.js"></script>
+  <script src="js/storage.js?v=20260309a"></script>
+  <script src="js/auth.js?v=20260309a"></script>
+  <script src="js/realtime.js?v=20260309a"></script>
 
   <script>
     const KEY_HISTORIAL = "historial_asistencias";
@@ -79,7 +79,9 @@
     }
 
     function iniciarSync() {
-      const bc = new BroadcastChannel("victory-data");
+      const bc = typeof createAppBroadcastChannel === "function"
+        ? createAppBroadcastChannel("victory-data")
+        : new BroadcastChannel("victory-data");
 
       bc.onmessage = async e => {
         if (e.data === "alumnos" || e.data === "asistencias") {
@@ -91,7 +93,14 @@
       };
 
       window.addEventListener("storage", async e => {
-        if (e.key === "alumnos" || e.key === KEY_HISTORIAL) {
+        const alumnosChanged = typeof isAppStorageKeyMatch === "function"
+          ? isAppStorageKeyMatch(e.key, "alumnos")
+          : (e.key === "alumnos");
+        const historialChanged = typeof isAppStorageKeyMatch === "function"
+          ? isAppStorageKeyMatch(e.key, KEY_HISTORIAL)
+          : (e.key === KEY_HISTORIAL);
+
+        if (alumnosChanged || historialChanged) {
           alumnos = (typeof obtenerAlumnos === "function" ? obtenerAlumnos() : safeGet("alumnos"));
           sesiones = safeGet(KEY_HISTORIAL);
           prepararVista();
