@@ -12,13 +12,13 @@
     <div class="brand">
       <img src="img/logo.png" alt="Control Escolar">
       <div>
-        <h2>Asistencias del dia</h2>
+        <h2>Asistencias del día</h2>
         <p class="brand-sub">Sistema de Asistencia Escolar</p>
       </div>
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesion</span>
+      <span class="session-pill" data-auth-user>Sin sesión</span>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
   </header>
@@ -50,14 +50,14 @@
 
   <div class="panel-acciones">
     <button class="destacado" data-role-allow="admin,capturista" onclick="location.href='registro.html'">Registrar alumno</button>
-    <button onclick="location.href='alumnos.html'">Alumnos A-Z</button>
+    <button onclick="location.href='alumnos.html'">Alumnos</button>
     <button data-role-allow="admin,capturista" onclick="location.href='registro.html#importacionExcel'">Carga masiva Excel</button>
     <button onclick="location.href='historial.html'">Historial</button>
     <button onclick="descargarReporte('asistencias')">Exportar asistencias CSV</button>
     <button onclick="descargarReporte('diario')">Exportar resumen diario</button>
   </div>
 
-  <p class="leyenda">Pase la tarjeta del alumno para registrar entrada o salida automaticamente.</p>
+  <p class="leyenda">Pase la tarjeta del alumno para registrar entrada o salida automáticamente.</p>
 
   <div id="contenedorTabla" class="table-shell" style="max-height:68vh;">
     <p id="estadoTabla" class="table-status loading">Cargando asistencias...</p>
@@ -65,7 +65,7 @@
       <thead>
         <tr>
           <th>Alumno</th>
-          <th>Matricula</th>
+          <th>Matrícula</th>
           <th>Grado / Grupo</th>
           <th>Entrada</th>
           <th>Salida</th>
@@ -175,7 +175,7 @@
       }
 
       if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED", "ERROR_NO_SUPABASE", "ERROR_NO_API"].includes(s)) {
-        setEstadoLector(estadoLector, "off", "Lector sin senal");
+        setEstadoLector(estadoLector, "off", "Lector sin señal");
       }
     }
 
@@ -256,7 +256,7 @@
           procesarTarjeta(uid);
         },
         onHeartbeat: evento => {
-          marcarHeartbeatLector(estadoLector, `ultima ${horaDesdeTS(evento?.ts || Date.now())}`);
+          marcarHeartbeatLector(estadoLector, `última ${horaDesdeTS(evento?.ts || Date.now())}`);
         },
         onStatus: status => {
           actualizarEstadoCanal(estadoLector, status);
@@ -388,7 +388,7 @@
         });
 
         if (resultado?.accion !== accionEsperada) {
-          mostrarConfirmacion("error", "Secuencia invalida", "El sistema detecto una accion fuera de orden");
+          mostrarConfirmacion("error", "Secuencia inválida", "El sistema detectó una acción fuera de orden");
           return;
         }
 
