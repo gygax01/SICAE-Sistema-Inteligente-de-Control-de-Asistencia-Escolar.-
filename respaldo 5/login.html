@@ -11,7 +11,7 @@
     <section class="login-card">
       <img src="img/logo.png" alt="Logo CECyTE" class="login-logo">
       <h1>Sistema de Asistencia Escolar</h1>
-      <p class="login-sub">Inicia sesion. El acceso se solicita una vez por dia.</p>
+      <p class="login-sub">Inicia sesión. El acceso se solicita una vez por día.</p>
 
       <form id="formLogin" class="login-form" autocomplete="off">
         <label>
@@ -24,7 +24,7 @@
           <input id="password" type="password" placeholder="********" required>
         </label>
 
-        <button type="submit" id="btnLogin" class="btn-login">Iniciar sesion</button>
+        <button type="submit" id="btnLogin" class="btn-login">Iniciar sesión</button>
       </form>
 
       <div class="login-alt-actions">
@@ -90,7 +90,7 @@
         }, 500);
       } catch (err) {
         console.error(err);
-        setMsg(err?.message || "No se pudo iniciar sesion", "error");
+        setMsg(err?.message || "No se pudo iniciar sesión", "error");
       } finally {
         btn.disabled = false;
       }
@@ -98,4 +98,3 @@
   </script>
 </body>
 </html>
-
