@@ -318,6 +318,126 @@ function objetoDesdeRespuesta(payload) {
   return payload;
 }
 
+function mensajeErrorApi(err, fallback = "No se pudo completar la operacion") {
+  const payload = err?.payload && typeof err.payload === "object" ? err.payload : {};
+  const base = String(payload.message || err?.message || fallback || "").trim();
+  const details = String(payload.details || "").trim();
+  const hint = String(payload.hint || "").trim();
+
+  return [base, details, hint].filter(Boolean).join(" | ");
+}
+
+function clasificarErrorInsertAlumno(err) {
+  const payload = err?.payload && typeof err.payload === "object" ? err.payload : {};
+  const code = String(payload.code || "").trim();
+  const status = Number(err?.status || 0);
+  const message = mensajeErrorApi(err, "Error al registrar alumno");
+  const full = message.toLowerCase();
+
+  if (code === "23505" || full.includes("duplicate key") || full.includes("duplicate")) {
+    if (full.includes("ux_alumnos_correo_ci") || full.includes("correo")) {
+      return {
+        code: code || "23505",
+        field: "correo",
+        message: "Ese correo ya existe en la base de datos."
+      };
+    }
+
+    if (full.includes("ux_alumnos_matricula_ci") || full.includes("matricula")) {
+      return {
+        code: code || "23505",
+        field: "matricula",
+        message: "Esa matricula ya existe en la base de datos."
+      };
+    }
+
+    if (
+      full.includes("ux_alumnos_tarjeta_uid_ci") ||
+      full.includes("tarjeta_uid") ||
+      full.includes("uid")
+    ) {
+      return {
+        code: code || "23505",
+        field: "tarjeta",
+        message: "Esa tarjeta NFC ya esta registrada en la base de datos."
+      };
+    }
+
+    return {
+      code: code || "23505",
+      field: null,
+      message: "Ya existe un alumno con datos duplicados en la base de datos."
+    };
+  }
+
+  if (
+    code === "42501" ||
+    status === 401 ||
+    status === 403 ||
+    full.includes("permission denied") ||
+    full.includes("row-level security")
+  ) {
+    return {
+      code: code || String(status || "AUTH"),
+      field: null,
+      message: "La base de datos rechazo el registro por permisos (RLS/policies)."
+    };
+  }
+
+  return {
+    code: code || (status ? String(status) : "UNKNOWN"),
+    field: null,
+    message: message || "Error al registrar alumno"
+  };
+}
+
+function resultadoInsertAlumno({ ok = false, alumno = null, code = null, field = null, message = "" } = {}) {
+  return {
+    ok: !!ok,
+    alumno: alumno || null,
+    code: code || null,
+    field: field || null,
+    message: String(message || "").trim()
+  };
+}
+
+async function verificarAlumnoInsertadoRemoto(id) {
+  const idRaw = String(id || "").trim();
+  if (!idRaw || !navigator.onLine) return false;
+
+  try {
+    const payload = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest(`/alumnos/${encodeURIComponent(idRaw)}`),
+        () => apiRequest("/alumnos", { query: { id: idRaw, limit: 1 } })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", {
+          query: {
+            select: "id",
+            id: pgEq(idRaw),
+            limit: 1
+          }
+        })
+      ]
+    }), { acceptNull: true });
+
+    if (Array.isArray(payload)) {
+      return payload.some(row => String(row?.id || "").trim() === idRaw);
+    }
+
+    const arr = arrayDesdeRespuesta(payload);
+    if (arr.length) {
+      return arr.some(row => String(row?.id || "").trim() === idRaw);
+    }
+
+    const obj = objetoDesdeRespuesta(payload);
+    return String(obj?.id || "").trim() === idRaw;
+  } catch (_) {
+    return false;
+  }
+}
+
 function alumnoVacioBase() {
   return {
     id: "",
@@ -562,7 +682,12 @@ async function verificarDuplicadoAlumnoRemoto({ correo, matricula, uid }) {
   }
 
   try {
-    const payload = await apiRequest("/alumnos");
+    const payload = await apiRequest("/alumnos", {
+      query: {
+        select: "id,correo,matricula,tarjeta_uid",
+        limit: 5000
+      }
+    });
     const lista = arrayDesdeRespuesta(payload).map(normalizarAlumno);
 
     if (uidN && lista.some(a => normalizarUID(a.tarjetaUID) === uidN)) return "tarjeta";
@@ -576,28 +701,63 @@ async function verificarDuplicadoAlumnoRemoto({ correo, matricula, uid }) {
 }
 
 async function insertarAlumnoSupabase(alumno) {
-  if (!navigator.onLine) return false;
+  if (!navigator.onLine) {
+    return resultadoInsertAlumno({
+      ok: false,
+      code: "OFFLINE",
+      message: "Sin conexion a internet. No se pudo registrar en la base de datos."
+    });
+  }
 
   try {
     const payload = alumnoAPayloadServidor(alumno);
 
-    const res = await apiTry([
-      () => apiRequest("/alumnos", { method: "POST", body: payload }),
-      () => apiRequest("/alumnos", {
-        method: "POST",
-        body: payload,
-        headers: { Prefer: "return=representation" }
-      }),
-      () => apiRequest("/students", { method: "POST", body: payload })
-    ]);
+    const res = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/alumnos", { method: "POST", body: payload }),
+        () => apiRequest("/students", { method: "POST", body: payload })
+      ],
+      postgrest: [
+        () => apiRequest("/alumnos", {
+          method: "POST",
+          body: payload,
+          headers: { Prefer: "return=representation" }
+        }),
+        () => apiRequest("/alumnos", { method: "POST", body: payload })
+      ]
+    }));
 
-    const guardado = objetoDesdeRespuesta(res) || alumno;
+    const representacion = objetoDesdeRespuesta(res);
+    const guardado = representacion || alumno;
+    const idGuardado = String(guardado?.id || alumno?.id || "").trim();
+    const confirmado = String(representacion?.id || "").trim()
+      ? true
+      : await verificarAlumnoInsertadoRemoto(idGuardado);
+
+    if (!confirmado) {
+      return resultadoInsertAlumno({
+        ok: false,
+        code: "VERIFY_FAILED",
+        message: "El servidor respondio, pero no se pudo confirmar el registro en la base de datos."
+      });
+    }
+
     upsertAlumnoLocal(guardado);
-
-    return true;
+    return resultadoInsertAlumno({
+      ok: true,
+      alumno: normalizarAlumno(guardado),
+      code: "OK",
+      message: "Alumno registrado en la base de datos."
+    });
   } catch (err) {
-    console.error("[ALUMNOS] Error insert API:", err?.message || err);
-    return false;
+    const info = clasificarErrorInsertAlumno(err);
+    console.error("[ALUMNOS] Error insert API:", info.message, err?.payload || err);
+    return resultadoInsertAlumno({
+      ok: false,
+      code: info.code,
+      field: info.field,
+      message: info.message
+    });
   }
 }
 
@@ -1217,6 +1377,13 @@ async function descargarReporteDiarioCsv({ inicioISO = null, finISO = null } = {
 ====================================================== */
 
 window.apiRequest = apiRequest;
+window.ensureAlumnosCargados = ensureAlumnosCargados;
+window.obtenerAlumnoPorUIDRemoto = obtenerAlumnoPorUIDRemoto;
+window.verificarDuplicadoAlumnoRemoto = verificarDuplicadoAlumnoRemoto;
+window.insertarAlumnoSupabase = insertarAlumnoSupabase;
+window.actualizarAlumnoSupabase = actualizarAlumnoSupabase;
+window.borrarAlumnoSupabase = borrarAlumnoSupabase;
+window.reconstruirAsistenciasHoy = reconstruirAsistenciasHoy;
 window.obtenerEventosAttendanceRemotos = obtenerEventosAttendanceRemotos;
 window.obtenerUltimoTipoAsistenciaHoyRemoto = obtenerUltimoTipoAsistenciaHoyRemoto;
 window.registrarAsistenciaServidor = registrarAsistenciaServidor;
