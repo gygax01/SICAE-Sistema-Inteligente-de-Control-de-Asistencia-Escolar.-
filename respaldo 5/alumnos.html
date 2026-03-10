@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lista de Alumnos</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body data-requires-auth="true">
+  <header class="header-brand">
+    <div class="brand">
+      <img src="img/logo.png" alt="Control Escolar">
+      <div>
+        <h2>Alumnos registrados (A-Z)</h2>
+        <p class="brand-sub">Listado alfabetico con datos de registro</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
+      <button class="btn-sec" data-auth-logout>Salir</button>
+    </div>
+  </header>
+
+  <section class="search-bar">
+    <input id="busquedaAlumnos" placeholder="Buscar por nombre, matricula, correo o UID...">
+  </section>
+
+  <p id="estadoAlumnos" class="screen-status loading">Cargando alumnos...</p>
+
+  <div class="table-shell" style="max-height:72vh;">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Nombre</th>
+          <th>Matricula</th>
+          <th>Grado / Grupo</th>
+          <th>Correo</th>
+          <th>UID</th>
+        </tr>
+      </thead>
+      <tbody id="tablaAlumnos"></tbody>
+    </table>
+  </div>
+
+  <script src="js/storage.js?v=20260310a"></script>
+  <script src="js/auth.js?v=20260310a"></script>
+  <script src="js/realtime.js?v=20260310a"></script>
+
+  <script>
+    const busquedaAlumnos = document.getElementById("busquedaAlumnos");
+    const estadoAlumnos = document.getElementById("estadoAlumnos");
+    const tablaAlumnos = document.getElementById("tablaAlumnos");
+
+    let alumnos = [];
+
+    window.addEventListener("load", initAlumnos);
+
+    function setEstado(msg, tipo = "info") {
+      estadoAlumnos.textContent = msg || "";
+      estadoAlumnos.className = `screen-status ${tipo}`;
+      estadoAlumnos.style.display = msg ? "block" : "none";
+    }
+
+    function normalizarTexto(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function gradoGrupo(a) {
+      const grado = String(a?.grado || "").trim();
+      const grupo = String(a?.grupo || "").trim();
+      if (!grado && !grupo) return "-";
+      if (grado && grupo) return `${grado} / ${grupo}`;
+      return grado || grupo;
+    }
+
+    function cargarAlumnosLocalOrdenados() {
+      const raw = typeof obtenerAlumnos === "function" ? obtenerAlumnos() : safeGet("alumnos");
+      const lista = (Array.isArray(raw) ? raw : []).filter(a => a && (a.id || a.nombre || a.matricula || a.tarjetaUID));
+
+      return lista.sort((a, b) => {
+        const nA = String(a?.nombre || "").trim();
+        const nB = String(b?.nombre || "").trim();
+        const porNombre = nA.localeCompare(nB, "es", { sensitivity: "base" });
+        if (porNombre !== 0) return porNombre;
+
+        const mA = String(a?.matricula || "").trim().toUpperCase();
+        const mB = String(b?.matricula || "").trim().toUpperCase();
+        return mA.localeCompare(mB, "es", { sensitivity: "base" });
+      });
+    }
+
+    function coincideBusqueda(a, query) {
+      if (!query) return true;
+
+      const nombre = normalizarTexto(a?.nombre || "");
+      const matricula = normalizarTexto(a?.matricula || "");
+      const correo = normalizarTexto(a?.correo || "");
+      const uid = normalizarTexto(a?.tarjetaUID || a?.tarjeta_uid || "");
+      return nombre.includes(query) || matricula.includes(query) || correo.includes(query) || uid.includes(query);
+    }
+
+    function renderAlumnos() {
+      const query = normalizarTexto(busquedaAlumnos.value);
+      const lista = alumnos.filter(a => coincideBusqueda(a, query));
+
+      tablaAlumnos.innerHTML = "";
+
+      if (!alumnos.length) {
+        setEstado("No hay alumnos registrados en la base de datos.", "empty");
+        return;
+      }
+
+      if (!lista.length) {
+        setEstado("No hay coincidencias para la busqueda actual.", "warn");
+        return;
+      }
+
+      setEstado(`Total de alumnos: ${lista.length}`, "ok");
+
+      lista.forEach((a, idx) => {
+        const tr = document.createElement("tr");
+
+        const tdNum = document.createElement("td");
+        tdNum.textContent = String(idx + 1);
+
+        const tdNombre = document.createElement("td");
+        tdNombre.textContent = String(a?.nombre || "Alumno");
+
+        const tdMatricula = document.createElement("td");
+        tdMatricula.textContent = String(a?.matricula || "-");
+
+        const tdGradoGrupo = document.createElement("td");
+        tdGradoGrupo.textContent = gradoGrupo(a);
+
+        const tdCorreo = document.createElement("td");
+        tdCorreo.textContent = String(a?.correo || "-");
+
+        const tdUID = document.createElement("td");
+        tdUID.textContent = String(a?.tarjetaUID || a?.tarjeta_uid || "-");
+
+        tr.append(tdNum, tdNombre, tdMatricula, tdGradoGrupo, tdCorreo, tdUID);
+        tablaAlumnos.appendChild(tr);
+      });
+    }
+
+    async function recargarAlumnos() {
+      if (typeof ensureAlumnosCargados === "function") {
+        await ensureAlumnosCargados();
+      }
+
+      alumnos = cargarAlumnosLocalOrdenados();
+      renderAlumnos();
+    }
+
+    function iniciarSync() {
+      const canal = typeof createAppBroadcastChannel === "function"
+        ? createAppBroadcastChannel("victory-data")
+        : new BroadcastChannel("victory-data");
+
+      canal.onmessage = async e => {
+        if (e.data === "alumnos") {
+          await recargarAlumnos();
+        }
+      };
+
+      window.addEventListener("storage", async e => {
+        const keyOk = typeof isAppStorageKeyMatch === "function"
+          ? isAppStorageKeyMatch(e.key, "alumnos")
+          : (e.key === "alumnos");
+
+        if (keyOk) {
+          await recargarAlumnos();
+        }
+      });
+    }
+
+    async function initAlumnos() {
+      setEstado("Cargando alumnos...", "loading");
+      busquedaAlumnos.addEventListener("input", renderAlumnos);
+      await recargarAlumnos();
+      iniciarSync();
+    }
+  </script>
+</body>
+</html>
