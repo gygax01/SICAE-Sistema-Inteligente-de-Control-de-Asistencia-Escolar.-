@@ -258,7 +258,7 @@ button:disabled,
   width: min(1180px, 92vw);
   margin: 12px auto;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
 
