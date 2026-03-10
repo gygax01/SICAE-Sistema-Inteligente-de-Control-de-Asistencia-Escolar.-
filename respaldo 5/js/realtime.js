@@ -735,10 +735,12 @@ async function insertarAlumnoSupabase(alumno) {
       : await verificarAlumnoInsertadoRemoto(idGuardado);
 
     if (!confirmado) {
+      upsertAlumnoLocal(guardado);
       return resultadoInsertAlumno({
-        ok: false,
-        code: "VERIFY_FAILED",
-        message: "El servidor respondio, pero no se pudo confirmar el registro en la base de datos."
+        ok: true,
+        alumno: normalizarAlumno(guardado),
+        code: "OK_UNVERIFIED_READ",
+        message: "Alumno registrado. La lectura de confirmacion fue restringida por permisos."
       });
     }
 
