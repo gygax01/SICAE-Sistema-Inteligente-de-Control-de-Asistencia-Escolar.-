@@ -900,13 +900,29 @@ async function registrarAsistenciaServidor(payload) {
   };
 
   try {
-    await apiTry([
-      () => apiRequest("/attendance", { method: "POST", body: payloadNormalizado }),
-      () => apiRequest("/attendance/event", { method: "POST", body: payloadNormalizado })
-    ]);
+    const res = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/attendance", { method: "POST", body: payloadNormalizado }),
+        () => apiRequest("/attendance/event", { method: "POST", body: payloadNormalizado })
+      ],
+      postgrest: [
+        () => apiRequest("/attendance", {
+          method: "POST",
+          body: payloadNormalizado,
+          headers: { Prefer: "return=representation" }
+        }),
+        () => apiRequest("/attendance", { method: "POST", body: payloadNormalizado })
+      ]
+    }), { acceptNull: true });
 
-    return { accion: String(payloadNormalizado?.type || "").toLowerCase() };
-  } catch (_) {
+    const out = objetoDesdeRespuesta(res) || {};
+    const accion = String(out.accion || out.type || payloadNormalizado?.type || "").toLowerCase();
+    return { accion: accion || String(payloadNormalizado?.type || "").toLowerCase() };
+  } catch (errPrimario) {
+    if (IS_SUPABASE_REST_MODE) {
+      throw errPrimario;
+    }
+
     const rpcPayload = {
       p_id: payloadNormalizado?.id,
       p_alumno_id: alumnoId,
@@ -920,7 +936,7 @@ async function registrarAsistenciaServidor(payload) {
     const rpc = await apiTry([
       () => apiRequest("/attendance/registrar", { method: "POST", body: rpcPayload }),
       () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload })
-    ]);
+    ], { acceptNull: true });
 
     const out = objetoDesdeRespuesta(rpc) || {};
     const accion = String(out.accion || out.type || payloadNormalizado?.type || "").toLowerCase();
