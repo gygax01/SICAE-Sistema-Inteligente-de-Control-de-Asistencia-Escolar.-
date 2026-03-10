@@ -1,12 +1,13 @@
 /* ======================================================
-   ===== AUTH JWT (FRONTEND) ===========================
+   ===== AUTH APP (LOGIN DIARIO + ROLES) ================
 ====================================================== */
 
 (() => {
 
 const AUTH_TOKEN_KEY = "asistencia_auth_token";
 const AUTH_USER_KEY = "asistencia_auth_user";
-const AUTH_BYPASS_KEY = "AUTH_BYPASS";
+const AUTH_LOGIN_DAY_KEY = "asistencia_auth_login_day";
+
 const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
 const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
 const SUPABASE_PROJECT_REF = (() => {
@@ -19,6 +20,9 @@ const SUPABASE_PROJECT_REF = (() => {
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
+const AUTH_APP_TIMEZONE = "America/Mexico_City";
+let authDayWatcherId = null;
+
 const getStore = typeof storageGetItem === "function"
   ? storageGetItem
   : key => localStorage.getItem(key);
@@ -76,21 +80,6 @@ function getApiBaseURLForAuth() {
   return DEFAULT_API_BASE_URL;
 }
 
-function isAuthBypassEnabled() {
-  return String(getStore(AUTH_BYPASS_KEY) || "").trim().toLowerCase() === "true";
-}
-
-function enableAuthBypass(user = null) {
-  setStore(AUTH_BYPASS_KEY, "true");
-  if (user) {
-    setAuthSession(getAuthToken() || "postgrest-direct", user);
-  }
-}
-
-function getAuthToken() {
-  return String(getStore(AUTH_TOKEN_KEY) || "").trim();
-}
-
 function parseJwtPayload(token) {
   try {
     const parts = String(token || "").split(".");
@@ -110,7 +99,7 @@ function tokenPerteneceAProyectoActual(token) {
 }
 
 function resolveDefaultAuthToken() {
-  const token = getAuthToken();
+  const token = String(getStore(AUTH_TOKEN_KEY) || "").trim();
   if (!token || token.startsWith("sb_publishable_") || token === "postgrest-direct") {
     return SUPABASE_ANON_KEY;
   }
@@ -120,47 +109,74 @@ function resolveDefaultAuthToken() {
   return token;
 }
 
-function inicializarSupabaseDirecto() {
-  const apiBase = getApiBaseURLForAuth();
-  if (!esSupabaseRest(apiBase)) return;
+function hoyAuth() {
+  if (typeof hoy === "function") return hoy();
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: AUTH_APP_TIMEZONE
+  });
+}
 
-  setStore("API_BASE_URL", apiBase);
+function normalizarRol(value) {
+  const rol = String(value || "").trim().toLowerCase();
+  if (!rol) return "";
+  if (rol === "admin" || rol === "direccion") return "direccion";
+  if (rol === "capturista" || rol === "docente") return "docente";
+  return rol;
+}
 
-  setStore(AUTH_TOKEN_KEY, resolveDefaultAuthToken());
+function normalizarUsuario(raw = {}) {
+  const anio = Number(raw.anio_nacimiento ?? raw.anioNacimiento ?? raw.birth_year ?? 0);
 
-  if (!isAuthBypassEnabled()) {
-    setStore(AUTH_BYPASS_KEY, "true");
-  }
+  return {
+    id: String(raw.id || "").trim(),
+    username: String(raw.username || raw.usuario || "").trim(),
+    nombre: String(raw.nombre || raw.nombre_completo || raw.full_name || raw.username || "Usuario").trim(),
+    rol: normalizarRol(raw.rol || raw.role || "docente"),
+    telefono: String(raw.telefono || "").trim(),
+    correo: String(raw.correo || "").trim().toLowerCase(),
+    curp: String(raw.curp || "").trim().toUpperCase(),
+    anio_nacimiento: Number.isFinite(anio) && anio > 0 ? anio : null,
+    sexo: String(raw.sexo || "").trim().toUpperCase()
+  };
+}
 
-  const currentUser = getAuthUser();
-  if (!currentUser?.id) {
-    setAuthSession(getStore(AUTH_TOKEN_KEY) || SUPABASE_ANON_KEY, {
-      id: "supabase-direct",
-      username: "supabase",
-      nombre: "Modo Supabase",
-      rol: "admin"
-    });
-  }
+function getAuthToken() {
+  return resolveDefaultAuthToken();
 }
 
 function getAuthUser() {
   try {
     const raw = getStore(AUTH_USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    return normalizarUsuario(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-function setAuthSession(token, user) {
-  setStore(AUTH_TOKEN_KEY, String(token || ""));
-  setStore(AUTH_USER_KEY, JSON.stringify(user || null));
+function isAuthSessionActiveToday() {
+  const user = getAuthUser();
+  const diaSesion = String(getStore(AUTH_LOGIN_DAY_KEY) || "").trim();
+  const diaHoy = hoyAuth();
+  return !!(user?.id && diaSesion && diaSesion === diaHoy);
+}
+
+function setAuthSession(token, user, { markDay = true } = {}) {
+  const safeToken = String(token || resolveDefaultAuthToken() || SUPABASE_ANON_KEY).trim();
+  const safeUser = normalizarUsuario(user || {});
+
+  setStore(AUTH_TOKEN_KEY, safeToken || SUPABASE_ANON_KEY);
+  setStore(AUTH_USER_KEY, JSON.stringify(safeUser));
+
+  if (markDay) {
+    setStore(AUTH_LOGIN_DAY_KEY, hoyAuth());
+  }
 }
 
 function clearAuthSession({ redirect = true } = {}) {
-  removeStore(AUTH_TOKEN_KEY);
   removeStore(AUTH_USER_KEY);
-  removeStore(AUTH_BYPASS_KEY);
+  removeStore(AUTH_LOGIN_DAY_KEY);
+  setStore(AUTH_TOKEN_KEY, SUPABASE_ANON_KEY);
 
   if (redirect) {
     const next = encodeURIComponent(location.pathname.split("/").pop() || "index.html");
@@ -169,98 +185,181 @@ function clearAuthSession({ redirect = true } = {}) {
 }
 
 function isAuthRoleAllowed(allowed = []) {
-  if (!allowed.length) return true;
-  const role = String(getAuthUser()?.rol || "").trim().toLowerCase();
-  return allowed.map(r => String(r || "").trim().toLowerCase()).includes(role);
+  if (!Array.isArray(allowed) || !allowed.length) return true;
+
+  const role = normalizarRol(getAuthUser()?.rol || "");
+  if (!role) return false;
+
+  if (role === "direccion") {
+    return true;
+  }
+
+  return allowed.some(r => normalizarRol(r) === role);
 }
 
 function requireAuth() {
-  if (isAuthBypassEnabled()) return true;
-
-  const token = getAuthToken();
-  if (!token) {
-    clearAuthSession({ redirect: true });
-    return false;
-  }
-  return true;
+  if (isAuthSessionActiveToday()) return true;
+  clearAuthSession({ redirect: true });
+  return false;
 }
 
 async function authFetchMe() {
-  if (isAuthBypassEnabled()) {
-    return getAuthUser();
-  }
+  return getAuthUser();
+}
 
+function objetoRespuesta(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) return payload[0] || null;
+  return payload;
+}
+
+function authErrorMessage(err, fallback = "No se pudo completar la operacion") {
+  const payload = err?.payload && typeof err.payload === "object" ? err.payload : {};
+  return String(
+    payload.message ||
+    payload.error_description ||
+    payload.error ||
+    err?.message ||
+    fallback
+  ).trim();
+}
+
+async function callAuthRpc(fnName, payload = {}) {
+  const base = getApiBaseURLForAuth().replace(/\/+$/, "");
+  const url = `${base}/rpc/${fnName}`;
   const token = getAuthToken();
-  if (!token) return null;
 
-  const base = getApiBaseURLForAuth();
-
-  const res = await fetch(`${base}/auth/me`, {
+  const res = await fetch(url, {
+    method: "POST",
     headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_PUBLISHABLE_KEY,
       Authorization: `Bearer ${token}`
     },
-    credentials: shouldIncludeCredentials(base) ? "include" : "omit"
+    body: JSON.stringify(payload || {}),
+    credentials: shouldIncludeCredentials(url) ? "include" : "omit"
   });
 
-  if (!res.ok) {
-    throw new Error("auth_me_error");
+  const raw = await res.text();
+  let data = null;
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { message: raw };
+    }
   }
 
-  return res.json();
+  if (!res.ok) {
+    const err = new Error(`[AUTH ${res.status}] ${fnName}`);
+    err.status = res.status;
+    err.payload = data;
+    throw err;
+  }
+
+  return data;
+}
+
+async function appAuthRegisterUser(payload = {}) {
+  try {
+    const res = await callAuthRpc("app_registrar_usuario", {
+      p_rol: String(payload.rol || "").trim().toLowerCase(),
+      p_nombre_completo: String(payload.nombre_completo || "").trim(),
+      p_telefono: String(payload.telefono || "").trim(),
+      p_correo: String(payload.correo || "").trim().toLowerCase(),
+      p_curp: String(payload.curp || "").trim().toUpperCase(),
+      p_anio_nacimiento: Number(payload.anio_nacimiento || 0),
+      p_sexo: String(payload.sexo || "").trim().toUpperCase(),
+      p_username: String(payload.username || "").trim().toLowerCase(),
+      p_password: String(payload.password || ""),
+      p_master_password: String(payload.master_password || "")
+    });
+
+    const out = objetoRespuesta(res) || {};
+    const user = normalizarUsuario(out.user || out);
+    if (!user.id) {
+      throw new Error("Registro sin respuesta valida");
+    }
+
+    return {
+      ok: true,
+      user,
+      message: String(out.message || "Usuario registrado correctamente")
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      code: String(err?.payload?.code || err?.status || "AUTH_REGISTER_ERROR"),
+      message: authErrorMessage(err, "No se pudo registrar el usuario")
+    };
+  }
+}
+
+async function appAuthLogin({ username, password }) {
+  try {
+    const res = await callAuthRpc("app_login_usuario", {
+      p_username: String(username || "").trim().toLowerCase(),
+      p_password: String(password || "")
+    });
+
+    const out = objetoRespuesta(res) || {};
+    const user = normalizarUsuario(out.user || out);
+    if (!user.id) {
+      throw new Error("Login sin respuesta valida");
+    }
+
+    return {
+      ok: true,
+      user,
+      message: String(out.message || "Sesion iniciada")
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      code: String(err?.payload?.code || err?.status || "AUTH_LOGIN_ERROR"),
+      message: authErrorMessage(err, "Usuario o contrasena invalida")
+    };
+  }
+}
+
+function ensureDefaults() {
+  const apiBase = getApiBaseURLForAuth();
+  setStore("API_BASE_URL", apiBase);
+  setStore(AUTH_TOKEN_KEY, getAuthToken());
+}
+
+function startAuthDayWatcher() {
+  if (authDayWatcherId) return;
+
+  authDayWatcherId = setInterval(() => {
+    const needsAuth = document.body?.dataset?.requiresAuth === "true";
+    if (!needsAuth) return;
+    if (isAuthSessionActiveToday()) return;
+    clearAuthSession({ redirect: true });
+  }, 30000);
 }
 
 async function ensureAuthSession() {
-  inicializarSupabaseDirecto();
-
-  if (isAuthBypassEnabled()) {
-    return true;
-  }
-
-  if (!requireAuth()) return false;
-
-  if (!navigator.onLine) {
-    const localUser = getAuthUser();
-    if (localUser?.id || localUser?.username) {
-      return true;
-    }
-    return true;
-  }
-
-  try {
-    const me = await authFetchMe();
-    if (!me?.id) {
-      clearAuthSession({ redirect: true });
-      return false;
-    }
-
-    const currentUser = getAuthUser() || {};
-    setAuthSession(getAuthToken(), {
-      ...currentUser,
-      ...me
-    });
-
-    return true;
-  } catch {
-    clearAuthSession({ redirect: true });
-    return false;
-  }
+  ensureDefaults();
+  return requireAuth();
 }
 
 function hydrateAuthUI() {
   const user = getAuthUser();
-  const token = getAuthToken();
+  const isActiveToday = isAuthSessionActiveToday();
 
   const userSlots = document.querySelectorAll("[data-auth-user]");
   userSlots.forEach(el => {
     if (!el) return;
-    if (!user || !token) {
+    if (!user || !isActiveToday) {
       el.textContent = "Sin sesion";
       return;
     }
 
-    const rol = String(user.rol || "").trim();
     const nombre = String(user.nombre || user.username || "Usuario").trim();
-    el.textContent = `${nombre}${rol ? ` (${rol})` : ""}`;
+    const rol = String(user.rol || "").trim();
+    el.textContent = `Bienvenido, ${nombre}${rol ? ` (${rol})` : ""}`;
   });
 
   const restricted = document.querySelectorAll("[data-role-allow]");
@@ -289,6 +388,7 @@ function hydrateAuthUI() {
 
 window.AUTH_TOKEN_KEY = AUTH_TOKEN_KEY;
 window.AUTH_USER_KEY = AUTH_USER_KEY;
+window.AUTH_LOGIN_DAY_KEY = AUTH_LOGIN_DAY_KEY;
 window.getAuthToken = getAuthToken;
 window.getAuthUser = getAuthUser;
 window.setAuthSession = setAuthSession;
@@ -298,8 +398,11 @@ window.ensureAuthSession = ensureAuthSession;
 window.isAuthRoleAllowed = isAuthRoleAllowed;
 window.hydrateAuthUI = hydrateAuthUI;
 window.authFetchMe = authFetchMe;
-window.isAuthBypassEnabled = isAuthBypassEnabled;
-window.enableAuthBypass = enableAuthBypass;
+window.isAuthBypassEnabled = () => false;
+window.enableAuthBypass = () => false;
+window.isAuthSessionActiveToday = isAuthSessionActiveToday;
+window.appAuthRegisterUser = appAuthRegisterUser;
+window.appAuthLogin = appAuthLogin;
 window.DEFAULT_API_BASE_URL = DEFAULT_API_BASE_URL;
 window.SUPABASE_PROJECT_URL = SUPABASE_PROJECT_URL;
 window.SUPABASE_REST_URL = SUPABASE_REST_URL;
@@ -307,15 +410,19 @@ window.SUPABASE_PUBLISHABLE_KEY = SUPABASE_PUBLISHABLE_KEY;
 window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
 window.addEventListener("load", async () => {
-  inicializarSupabaseDirecto();
+  ensureDefaults();
 
   const needsAuth = document.body?.dataset?.requiresAuth === "true";
-  if (!needsAuth) return;
+  if (!needsAuth) {
+    hydrateAuthUI();
+    return;
+  }
 
   const ok = await ensureAuthSession();
   if (!ok) return;
 
   hydrateAuthUI();
+  startAuthDayWatcher();
 });
 
 })();
