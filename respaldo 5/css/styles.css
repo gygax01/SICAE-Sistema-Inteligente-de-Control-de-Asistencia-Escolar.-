@@ -54,7 +54,9 @@ textarea {
   font: inherit;
 }
 
-input {
+input,
+select,
+textarea {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
@@ -63,7 +65,9 @@ input {
   color: var(--text);
 }
 
-input:focus {
+input:focus,
+select:focus,
+textarea:focus {
   border-color: var(--green-600);
   outline: 2px solid #b8ebcf;
 }
@@ -637,6 +641,10 @@ th {
   padding: 22px;
 }
 
+.login-shell.wide {
+  width: min(760px, 94vw);
+}
+
 .login-card {
   background: #ffffff;
   border: 1px solid var(--line);
@@ -669,6 +677,13 @@ th {
   margin-top: 16px;
   display: grid;
   gap: 12px;
+}
+
+.login-alt-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .login-form label {
