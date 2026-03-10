@@ -19,6 +19,7 @@
     </div>
 
     <div class="header-actions">
+      <span class="session-pill" data-auth-user>Sin sesión</span>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
@@ -33,7 +34,7 @@
       <input id="correo" type="email" placeholder="Correo electronico">
       <input id="fechaNacimiento" type="date" placeholder="Fecha de nacimiento">
       <input id="telefono" type="tel" placeholder="Telefono de contacto">
-      <input id="matricula" placeholder="Matricula">
+      <input id="matricula" placeholder="Matrícula">
       <input id="grado" placeholder="Grado (ej: 1, 2, 3)">
       <input id="grupo" placeholder="Grupo (ej: A, B)">
     </div>
@@ -80,7 +81,7 @@
   </div>
 
   <script src="js/storage.js?v=20260310a"></script>
-  <script src="js/auth.js?v=20260310a"></script>
+  <script src="js/auth.js?v=20260310b"></script>
   <script src="js/realtime.js?v=20260310a"></script>
   <script src="js/nfc.js?v=20260310a"></script>
 
@@ -405,7 +406,7 @@
           }
 
           if (vistosMatricula.has(alumno.matricula)) {
-            errores.push(`Fila ${fila.__rownum}: matricula duplicada en el archivo (${alumno.matricula})`);
+            errores.push(`Fila ${fila.__rownum}: matrícula duplicada en el archivo (${alumno.matricula})`);
             continue;
           }
           vistosMatricula.add(alumno.matricula);
@@ -627,7 +628,7 @@
       }
 
       if (duplicado === "matricula") {
-        mostrarConfirm("Registro bloqueado", "Esa matricula ya existe", "error");
+        mostrarConfirm("Registro bloqueado", "Esa matrícula ya existe", "error");
         return;
       }
 
