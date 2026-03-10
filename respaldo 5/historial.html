@@ -18,14 +18,14 @@
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesion</span>
+      <span class="session-pill" data-auth-user>Sin sesión</span>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
   </header>
 
   <section class="search-bar">
-    <input id="busqueda" placeholder="Buscar por nombre o matricula...">
+    <input id="busqueda" placeholder="Buscar por nombre o matrícula...">
   </section>
 
   <div class="panel-acciones panel-inline">
@@ -256,7 +256,7 @@
         p.className = "meta";
 
         const gradoGrupo = `${alumno.grado || ""}${alumno.grado && alumno.grupo ? " / " : ""}${alumno.grupo || ""}`;
-        p.textContent = `Matricula: ${alumno.matricula || "-"} | Grado/Grupo: ${gradoGrupo || "-"}`;
+        p.textContent = `Matrícula: ${alumno.matricula || "-"} | Grado/Grupo: ${gradoGrupo || "-"}`;
 
         infoBloque.appendChild(h3);
         infoBloque.appendChild(p);
@@ -343,4 +343,3 @@
   </script>
 </body>
 </html>
-
