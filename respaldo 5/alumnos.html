@@ -12,20 +12,20 @@
     <div class="brand">
       <img src="img/logo.png" alt="Control Escolar">
       <div>
-        <h2>Alumnos registrados (A-Z)</h2>
-        <p class="brand-sub">Listado alfabetico con datos de registro</p>
+        <h2>Alumnos</h2>
+        <p class="brand-sub">Listado por grado y grupo</p>
       </div>
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesion</span>
+      <span class="session-pill" data-auth-user>Sin sesión</span>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
   </header>
 
   <section class="search-bar">
-    <input id="busquedaAlumnos" placeholder="Buscar por nombre, matricula, correo o UID...">
+    <input id="busquedaAlumnos" placeholder="Buscar por nombre, matrícula, correo o UID...">
   </section>
 
   <p id="estadoAlumnos" class="screen-status loading">Cargando alumnos...</p>
@@ -36,7 +36,7 @@
         <tr>
           <th>#</th>
           <th>Nombre</th>
-          <th>Matricula</th>
+          <th>Matrícula</th>
           <th>Grado / Grupo</th>
           <th>Correo</th>
           <th>UID</th>
@@ -85,16 +85,41 @@
       const raw = typeof obtenerAlumnos === "function" ? obtenerAlumnos() : safeGet("alumnos");
       const lista = (Array.isArray(raw) ? raw : []).filter(a => a && (a.id || a.nombre || a.matricula || a.tarjetaUID));
 
-      return lista.sort((a, b) => {
-        const nA = String(a?.nombre || "").trim();
-        const nB = String(b?.nombre || "").trim();
-        const porNombre = nA.localeCompare(nB, "es", { sensitivity: "base" });
-        if (porNombre !== 0) return porNombre;
+      return lista.sort((a, b) => compararPorGradoGrupoNombre(a, b));
+    }
 
-        const mA = String(a?.matricula || "").trim().toUpperCase();
-        const mB = String(b?.matricula || "").trim().toUpperCase();
-        return mA.localeCompare(mB, "es", { sensitivity: "base" });
+    function compararNatural(a, b) {
+      return String(a || "").localeCompare(String(b || ""), "es", {
+        sensitivity: "base",
+        numeric: true
       });
+    }
+
+    function compararNivelAsc(a, b) {
+      const vA = String(a || "").trim().toUpperCase();
+      const vB = String(b || "").trim().toUpperCase();
+
+      const numA = /^\d+$/.test(vA);
+      const numB = /^\d+$/.test(vB);
+
+      if (numA && numB) return Number(vA) - Number(vB);
+      if (numA && !numB) return -1;
+      if (!numA && numB) return 1;
+
+      return compararNatural(vA, vB);
+    }
+
+    function compararPorGradoGrupoNombre(a, b) {
+      const cmpGrado = compararNivelAsc(a?.grado, b?.grado);
+      if (cmpGrado !== 0) return cmpGrado;
+
+      const cmpGrupo = compararNivelAsc(a?.grupo, b?.grupo);
+      if (cmpGrupo !== 0) return cmpGrupo;
+
+      const cmpNombre = compararNatural(String(a?.nombre || "").trim(), String(b?.nombre || "").trim());
+      if (cmpNombre !== 0) return cmpNombre;
+
+      return compararNatural(String(a?.matricula || "").trim().toUpperCase(), String(b?.matricula || "").trim().toUpperCase());
     }
 
     function coincideBusqueda(a, query) {
@@ -119,7 +144,7 @@
       }
 
       if (!lista.length) {
-        setEstado("No hay coincidencias para la busqueda actual.", "warn");
+        setEstado("No hay coincidencias para la búsqueda actual.", "warn");
         return;
       }
 
