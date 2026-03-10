@@ -79,10 +79,10 @@
     </div>
   </div>
 
-  <script src="js/storage.js?v=20260309a"></script>
-  <script src="js/auth.js?v=20260309a"></script>
-  <script src="js/realtime.js?v=20260309a"></script>
-  <script src="js/nfc.js?v=20260309a"></script>
+  <script src="js/storage.js?v=20260310a"></script>
+  <script src="js/auth.js?v=20260310a"></script>
+  <script src="js/realtime.js?v=20260310a"></script>
+  <script src="js/nfc.js?v=20260310a"></script>
 
   <script>
     let tarjetaUID = null;
@@ -317,19 +317,34 @@
     }
 
     async function sincronizarRemotoImportacion(creados, actualizados) {
-      if (!navigator.onLine) return;
+      const resumen = {
+        fallasInsert: [],
+        fallasUpdate: []
+      };
+
+      if (!navigator.onLine) return resumen;
 
       await ejecutarEnLotes(creados, 20, async alumno => {
-        if (typeof insertarAlumnoSupabase === "function") {
-          await insertarAlumnoSupabase(alumno);
+        if (typeof insertarAlumnoSupabase !== "function") return;
+
+        const r = await insertarAlumnoSupabase(alumno);
+        if (!r?.ok) {
+          const clave = alumno?.matricula || alumno?.nombre || alumno?.id || "sin-clave";
+          resumen.fallasInsert.push(`${clave}: ${r?.message || "Error remoto"}`);
         }
       });
 
       await ejecutarEnLotes(actualizados, 20, async alumno => {
-        if (typeof actualizarAlumnoSupabase === "function") {
-          await actualizarAlumnoSupabase(alumno);
+        if (typeof actualizarAlumnoSupabase !== "function") return;
+
+        const ok = await actualizarAlumnoSupabase(alumno);
+        if (!ok) {
+          const clave = alumno?.matricula || alumno?.nombre || alumno?.id || "sin-clave";
+          resumen.fallasUpdate.push(`${clave}: No se pudo actualizar en remoto`);
         }
       });
+
+      return resumen;
     }
 
     async function importarExcelAlumnos(event) {
@@ -441,7 +456,12 @@
           ? createAppBroadcastChannel("victory-data")
           : new BroadcastChannel("victory-data");
         bcImport.postMessage("alumnos");
-        await sincronizarRemotoImportacion(nuevos, actualizados);
+        const sync = await sincronizarRemotoImportacion(nuevos, actualizados);
+        const fallasRemotas = (sync?.fallasInsert?.length || 0) + (sync?.fallasUpdate?.length || 0);
+        if (fallasRemotas > 0) {
+          errores.push(`Sincronizacion remota incompleta: ${fallasRemotas} fila(s)`);
+          console.warn("[IMPORTACION] Fallas remotas:", sync);
+        }
 
         const resumen = `Importacion completada. Nuevos: ${nuevos.length}, actualizados: ${actualizados.length}, errores: ${errores.length}`;
         setImportStatus(resumen, errores.length ? "warn" : "ok");
@@ -467,7 +487,7 @@
     async function duplicadoAlumno({ correo, matricula, uid }) {
       const alumnos = obtenerAlumnosLocal();
 
-      if (alumnos.some(a => String(a.correo || "").toLowerCase() === correo.toLowerCase())) {
+      if (alumnos.some(a => String(a.correo || "").trim().toLowerCase() === correo.trim().toLowerCase())) {
         return "correo";
       }
 
@@ -550,7 +570,7 @@
       return {
         id: crypto.randomUUID(),
         nombre: nombre.value.trim(),
-        correo: correo.value.trim(),
+        correo: correo.value.trim().toLowerCase(),
         fechaNacimiento: fechaNacimiento.value,
         telefono: telefono.value.trim(),
         matricula: normalizarMatricula(matricula.value),
@@ -616,7 +636,17 @@
         return;
       }
 
+      if (!navigator.onLine) {
+        setEstadoRegistro("Sin internet. Conectate para registrar en la base de datos.", "error");
+        mostrarConfirm("Sin conexion", "Conectate a internet para guardar en la base de datos", "error");
+        return;
+      }
+
+      setEstadoRegistro("Registrando alumno en base de datos...", "loading");
+      btnRegistrar.disabled = true;
+
       const lista = obtenerAlumnosLocal();
+      const respaldoLista = [...lista];
       lista.push(alumno);
 
       if (typeof guardarAlumnos === "function") {
@@ -630,13 +660,34 @@
         : new BroadcastChannel("victory-data");
       bcRegistro.postMessage("alumnos");
 
-      if (typeof insertarAlumnoSupabase === "function") {
-        const ok = await insertarAlumnoSupabase(alumno);
-        if (!ok) {
-          setEstadoRegistro("Guardado localmente. Se sincronizara cuando el servidor responda.", "warn");
+      if (typeof insertarAlumnoSupabase !== "function") {
+        if (typeof guardarAlumnos === "function") {
+          guardarAlumnos(respaldoLista);
+        } else {
+          safeSet("alumnos", respaldoLista);
         }
+        bcRegistro.postMessage("alumnos");
+        btnRegistrar.disabled = false;
+        setEstadoRegistro("No hay conexion con el modulo de sincronizacion remota.", "error");
+        mostrarConfirm("Registro fallido", "No se pudo conectar con el modulo remoto", "error");
+        return;
       }
 
+      const resultado = await insertarAlumnoSupabase(alumno);
+      if (!resultado?.ok) {
+        if (typeof guardarAlumnos === "function") {
+          guardarAlumnos(respaldoLista);
+        } else {
+          safeSet("alumnos", respaldoLista);
+        }
+        bcRegistro.postMessage("alumnos");
+        btnRegistrar.disabled = false;
+        setEstadoRegistro(`Error de base de datos: ${resultado?.message || "No se pudo registrar"}`, "error");
+        mostrarConfirm("Registro fallido", resultado?.message || "No se pudo guardar en la base de datos", "error");
+        return;
+      }
+
+      setEstadoRegistro("Registro confirmado en base de datos.", "ok");
       mostrarConfirm("Registro completado", "Alumno registrado correctamente", "entrada");
 
       setTimeout(() => {
