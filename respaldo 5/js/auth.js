@@ -353,13 +353,12 @@ function hydrateAuthUI() {
   userSlots.forEach(el => {
     if (!el) return;
     if (!user || !isActiveToday) {
-      el.textContent = "Sin sesion";
+      el.textContent = "Sin sesión";
       return;
     }
 
     const nombre = String(user.nombre || user.username || "Usuario").trim();
-    const rol = String(user.rol || "").trim();
-    el.textContent = `Bienvenido, ${nombre}${rol ? ` (${rol})` : ""}`;
+    el.textContent = nombre;
   });
 
   const restricted = document.querySelectorAll("[data-role-allow]");
