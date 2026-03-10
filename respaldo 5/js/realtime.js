@@ -347,7 +347,7 @@ function clasificarErrorInsertAlumno(err) {
       return {
         code: code || "23505",
         field: "matricula",
-        message: "Esa matricula ya existe en la base de datos."
+        message: "Esa matrícula ya existe en la base de datos."
       };
     }
 
@@ -1297,7 +1297,7 @@ async function descargarReporteAsistenciasCsv({ inicioISO = null, finISO = null 
 
     triggerCsvDownload(
       filename,
-      ["FechaHora", "Accion", "Alumno", "Matricula", "Grado", "Grupo", "UID"],
+      ["FechaHora", "Acción", "Alumno", "Matrícula", "Grado", "Grupo", "UID"],
       rows
     );
     return true;
@@ -1367,7 +1367,7 @@ async function descargarReporteDiarioCsv({ inicioISO = null, finISO = null } = {
 
     triggerCsvDownload(
       filename,
-      ["Fecha", "Alumno", "Matricula", "Grado", "Grupo", "PrimeraEntrada", "UltimaSalida", "Eventos"],
+      ["Fecha", "Alumno", "Matrícula", "Grado", "Grupo", "PrimeraEntrada", "ÚltimaSalida", "Eventos"],
       rows
     );
     return true;
