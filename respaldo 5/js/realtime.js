@@ -1150,11 +1150,20 @@ async function reconstruirAsistenciasHoy() {
   const nuevosEventosRemotos = [];
 
   for (const ev of eventos) {
-    const key = String(ev.alumno_id || ev.uid || "");
+    const uidNorm = normalizarUID(ev.uid || "");
+    const alumnoByUid = uidNorm ? alumnosPorUID.get(uidNorm) : null;
+    const canonicalId = String(ev.alumno_id || alumnoByUid?.id || "").trim();
+    const key = canonicalId || (uidNorm ? `uid:${uidNorm}` : "");
     if (!key) continue;
 
+    const evNorm = {
+      ...ev,
+      _uid_norm: uidNorm,
+      _canonical_id: canonicalId
+    };
+
     if (!sesiones[key]) sesiones[key] = [];
-    sesiones[key].push(ev);
+    sesiones[key].push(evNorm);
   }
 
   Object.keys(sesiones).forEach(key => {
@@ -1162,14 +1171,14 @@ async function reconstruirAsistenciasHoy() {
     let entradaActiva = null;
 
     items.forEach(ev => {
-      const alumno = ev.alumno_id
-        ? (alumnosPorId.get(String(ev.alumno_id)) || {})
-        : (alumnosPorUID.get(normalizarUID(ev.uid)) || {});
+      const alumno = ev._canonical_id
+        ? (alumnosPorId.get(String(ev._canonical_id)) || {})
+        : (alumnosPorUID.get(ev._uid_norm) || {});
       const wasSeen = marcarEventoAttendanceComoVisto(ev);
       if (attendanceNotificacionesInicializadas && wasSeen) {
         nuevosEventosRemotos.push({
           id: ev.id,
-          alumno_id: ev.alumno_id || null,
+          alumno_id: ev._canonical_id || ev.alumno_id || null,
           uid: ev.uid || "",
           type: ev.type,
           created_at: ev.created_at,
@@ -1180,7 +1189,7 @@ async function reconstruirAsistenciasHoy() {
       if (ev.type === "entrada") {
         entradaActiva = {
           id: ev.id,
-          alumno_id: ev.alumno_id || null,
+          alumno_id: ev._canonical_id || ev.alumno_id || null,
           nombre: alumno.nombre || "Alumno",
           matricula: alumno.matricula || "-",
           grado: alumno.grado || "",
@@ -1381,9 +1390,14 @@ async function construirResumenDashboardLocal() {
   const entradas = eventos.filter(e => e.type === "entrada").length;
   const salidas = eventos.filter(e => e.type === "salida").length;
   const lastByPersona = new Map();
+  const alumnosPorUID = new Map(
+    alumnos.map(a => [normalizarUID(a.tarjetaUID || a.tarjeta_uid || ""), a]).filter(x => x[0])
+  );
 
   eventos.forEach(e => {
-    const key = String(e.alumno_id || e.uid || "");
+    const uidNorm = normalizarUID(e.uid || "");
+    const alumnoByUid = uidNorm ? alumnosPorUID.get(uidNorm) : null;
+    const key = String(e.alumno_id || alumnoByUid?.id || (uidNorm ? `uid:${uidNorm}` : ""));
     if (!key) return;
     lastByPersona.set(key, e.type);
   });
