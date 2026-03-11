@@ -51,6 +51,7 @@
   <div class="panel-acciones">
     <button class="destacado" data-role-allow="direccion" data-role-hide-if-denied="true" onclick="location.href='registro.html'">Registrar alumno</button>
     <button onclick="location.href='alumnos.html'">Alumnos</button>
+    <button onclick="location.href='horarios.html'">Horarios y mapeo</button>
     <button data-role-allow="direccion" data-role-hide-if-denied="true" onclick="location.href='registro.html#importacionExcel'">Carga masiva Excel</button>
     <button data-role-allow="direccion" data-role-hide-if-denied="true" onclick="location.href='historial.html'">Historial</button>
     <button data-role-allow="direccion" data-role-hide-if-denied="true" onclick="descargarReporte('asistencias')">Exportar asistencias CSV</button>
@@ -58,6 +59,7 @@
   </div>
 
   <p class="leyenda">Pase la tarjeta del alumno para registrar entrada o salida automáticamente.</p>
+  <p id="estadoFiltroDocente" class="screen-status info estado-horario-docente" style="display:none;"></p>
 
   <div id="contenedorTabla" class="table-shell" style="max-height:68vh;">
     <p id="estadoTabla" class="table-status loading">Cargando asistencias...</p>
@@ -84,8 +86,9 @@
 
   <script src="js/storage.js?v=20260310a"></script>
   <script src="js/auth.js?v=20260310c"></script>
-  <script src="js/asistencias.js?v=20260310a"></script>
-  <script src="js/realtime.js?v=20260311a"></script>
+  <script src="js/horarios.js?v=20260311b"></script>
+  <script src="js/asistencias.js?v=20260311b"></script>
+  <script src="js/realtime.js?v=20260311e"></script>
   <script src="js/nfc.js?v=20260310a"></script>
 
   <script>
@@ -100,6 +103,10 @@
     const alumnosEnProceso = new Set();
     const eventosAnimados = new Map();
     const EVENTO_ANIM_TTL_MS = 1000 * 60 * 15;
+    let filtroHorarioDocenteActivo = false;
+    let gruposPermitidosHorarioDocente = new Set();
+    let mensajeVacioHorarioDocente = "";
+    let monitorHorarioDocenteId = null;
 
     window.addEventListener("load", async () => {
       const estadoLector = document.getElementById("estadoLector");
@@ -109,6 +116,17 @@
       window.addEventListener("online", () => actualizarEstadoConexion(estadoConexion));
       window.addEventListener("offline", () => actualizarEstadoConexion(estadoConexion));
 
+      if (typeof iniciarSyncHorariosRemoto === "function") {
+        iniciarSyncHorariosRemoto({
+          intervalMs: 10000,
+          prefer: "newer"
+        });
+      }
+
+      if (typeof horarioSincronizarAhora === "function") {
+        await horarioSincronizarAhora({ prefer: "newer" });
+      }
+
       if (typeof ensureAlumnosCargados === "function") {
         await ensureAlumnosCargados();
       }
@@ -116,6 +134,7 @@
       renderTablaConEstado();
       actualizarContador();
       await actualizarDashboard();
+      await refrescarFiltroHorarioDocente({ forceRender: true });
 
       iniciarLecturaNFCIndex(estadoLector);
       iniciarMonitorHeartbeat(estadoLector);
@@ -123,6 +142,11 @@
       setInterval(() => {
         actualizarDashboard();
       }, 8000);
+
+      if (monitorHorarioDocenteId) clearInterval(monitorHorarioDocenteId);
+      monitorHorarioDocenteId = setInterval(() => {
+        refrescarFiltroHorarioDocente({ forceRender: false });
+      }, 15000);
     });
 
     function setEstadoTabla(msg, tipo = "loading") {
@@ -134,11 +158,98 @@
       el.style.display = msg ? "block" : "none";
     }
 
+    function grupoKeyRegistro(a = {}) {
+      const grado = String(a?.grado || "").trim().toUpperCase();
+      const grupo = String(a?.grupo || "").trim().toUpperCase();
+      return `${grado}|${grupo}`;
+    }
+
+    function setEstadoFiltroDocente(msg = "", tipo = "info") {
+      const el = document.getElementById("estadoFiltroDocente");
+      if (!el) return;
+
+      if (!msg) {
+        el.textContent = "";
+        el.style.display = "none";
+        return;
+      }
+
+      el.textContent = msg;
+      el.className = `screen-status ${tipo} estado-horario-docente`;
+      el.style.display = "block";
+    }
+
+    window.filtroAsistenciaHorarioDocente = registro => {
+      if (!filtroHorarioDocenteActivo) return true;
+      if (!gruposPermitidosHorarioDocente.size) return false;
+      const key = grupoKeyRegistro(registro);
+      return gruposPermitidosHorarioDocente.has(key);
+    };
+
+    async function refrescarFiltroHorarioDocente({ forceRender = false } = {}) {
+      const role = typeof getAuthRole === "function" ? getAuthRole() : "";
+      if (role !== "docente") {
+        filtroHorarioDocenteActivo = false;
+        gruposPermitidosHorarioDocente = new Set();
+        mensajeVacioHorarioDocente = "";
+        setEstadoFiltroDocente("");
+        if (forceRender) {
+          renderTablaConEstado();
+          actualizarContador();
+        }
+        return;
+      }
+
+      if (typeof horarioObtenerClasesActualesDocente !== "function") {
+        filtroHorarioDocenteActivo = false;
+        gruposPermitidosHorarioDocente = new Set();
+        mensajeVacioHorarioDocente = "";
+        setEstadoFiltroDocente("Horario no disponible en este dispositivo.", "warn");
+        if (forceRender) {
+          renderTablaConEstado();
+          actualizarContador();
+        }
+        return;
+      }
+
+      const user = typeof getAuthUser === "function" ? getAuthUser() : {};
+      const clases = horarioObtenerClasesActualesDocente({
+        id: user?.id,
+        username: user?.username,
+        nombre: user?.nombre
+      }, new Date());
+
+      filtroHorarioDocenteActivo = true;
+
+      const grupos = new Set(
+        (Array.isArray(clases) ? clases : [])
+          .map(c => String(c?.grupo_key || "").trim().toUpperCase())
+          .filter(Boolean)
+      );
+
+      gruposPermitidosHorarioDocente = grupos;
+
+      if (!grupos.size) {
+        mensajeVacioHorarioDocente = "Sin clase activa en este bloque horario para tu docente.";
+        setEstadoFiltroDocente(mensajeVacioHorarioDocente, "warn");
+      } else {
+        mensajeVacioHorarioDocente = "No hay asistencias para tu bloque actual.";
+        const resumen = Array.from(grupos).map(g => String(g || "").replace("|", " ")).join(", ");
+        setEstadoFiltroDocente(`Mostrando solo grupos de tu bloque actual: ${resumen}`, "ok");
+      }
+
+      renderTablaConEstado();
+      actualizarContador();
+    }
+
     function renderTablaConEstado() {
       cargarAsistencias();
       const filas = document.querySelectorAll("#tablaAsistencias tr");
       if (!filas.length) {
-        setEstadoTabla("Sin asistencias registradas hoy.", "empty");
+        const msg = (filtroHorarioDocenteActivo && mensajeVacioHorarioDocente)
+          ? mensajeVacioHorarioDocente
+          : "Sin asistencias registradas hoy.";
+        setEstadoTabla(msg, "empty");
       } else {
         setEstadoTabla("", "ok");
       }
@@ -433,6 +544,20 @@
           return;
         }
 
+        if (filtroHorarioDocenteActivo) {
+          const keyGrupoAlumno = `${String(alumno?.grado || "").trim().toUpperCase()}|${String(alumno?.grupo || "").trim().toUpperCase()}`;
+
+          if (!gruposPermitidosHorarioDocente.size) {
+            mostrarConfirmacion("error", "Sin bloque activo", "Este docente no tiene clase asignada en este horario");
+            return;
+          }
+
+          if (!gruposPermitidosHorarioDocente.has(keyGrupoAlumno)) {
+            mostrarConfirmacion("error", "Fuera de horario", "El alumno no corresponde al grupo de este bloque");
+            return;
+          }
+        }
+
         if (alumnosEnProceso.has(alumno.id)) {
           return;
         }
@@ -500,6 +625,13 @@
         ? ev.alumno
         : await obtenerAlumnoDesdeEvento(ev);
       const nombre = String(alumno?.nombre || "Alumno").trim() || "Alumno";
+      const keyGrupoEvento = `${String(alumno?.grado || ev?.grado || "").trim().toUpperCase()}|${String(alumno?.grupo || ev?.grupo || "").trim().toUpperCase()}`;
+
+      if (filtroHorarioDocenteActivo) {
+        if (!gruposPermitidosHorarioDocente.size || !gruposPermitidosHorarioDocente.has(keyGrupoEvento)) {
+          return;
+        }
+      }
 
       if (tipo === "entrada") {
         mostrarConfirmacion("entrada", "Entrada registrada", nombre);
@@ -532,6 +664,10 @@
         actualizarContador();
         await actualizarDashboard();
       }
+    });
+
+    window.addEventListener("horarios:changed", async () => {
+      await refrescarFiltroHorarioDocente({ forceRender: true });
     });
   </script>
 </body>
