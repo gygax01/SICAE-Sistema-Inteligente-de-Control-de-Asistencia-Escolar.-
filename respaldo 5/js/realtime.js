@@ -1071,14 +1071,23 @@ async function registrarAsistenciaServidor(payload) {
         : {};
       const code = String(payloadErr.code || "").trim();
       const msg = String(payloadErr.message || errRpcPrimario?.message || "").toLowerCase();
+      const rpcAmbigua =
+        errRpcPrimario?.status === 300 ||
+        code === "PGRST203" ||
+        msg.includes("multiple choices") ||
+        msg.includes("could not choose the best candidate");
       const missingRpc =
         errRpcPrimario?.status === 404 ||
         code === "PGRST202" ||
         msg.includes("function") ||
         msg.includes("registrar_asistencia");
 
-      if (missingRpc) {
-        const err = new Error("RPC registrar_asistencia no disponible en Supabase. Ejecuta setup_concurrencia_realtime.sql y vuelve a intentar.");
+      if (rpcAmbigua || missingRpc) {
+        const err = new Error(
+          rpcAmbigua
+            ? "RPC registrar_asistencia ambigua/duplicada en Supabase. Ejecuta setup_concurrencia_realtime.sql para limpiar overloads y vuelve a intentar."
+            : "RPC registrar_asistencia no disponible en Supabase. Ejecuta setup_concurrencia_realtime.sql y vuelve a intentar."
+        );
         err.cause = errRpcPrimario;
         throw err;
       }
