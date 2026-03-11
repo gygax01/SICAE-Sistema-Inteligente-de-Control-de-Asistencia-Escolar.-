@@ -197,6 +197,10 @@ function isAuthRoleAllowed(allowed = []) {
   return allowed.some(r => normalizarRol(r) === role);
 }
 
+function getAuthRole() {
+  return normalizarRol(getAuthUser()?.rol || "");
+}
+
 function requireAuth() {
   if (isAuthSessionActiveToday()) return true;
   clearAuthSession({ redirect: true });
@@ -340,9 +344,21 @@ function startAuthDayWatcher() {
   }, 30000);
 }
 
+function enforcePageRoleAccess() {
+  const raw = String(document.body?.dataset?.pageRoleAllow || "").trim();
+  if (!raw) return true;
+
+  const allowedRoles = raw.split(",").map(x => x.trim()).filter(Boolean);
+  if (isAuthRoleAllowed(allowedRoles)) return true;
+
+  location.href = "index.html";
+  return false;
+}
+
 async function ensureAuthSession() {
   ensureDefaults();
-  return requireAuth();
+  if (!requireAuth()) return false;
+  return enforcePageRoleAccess();
 }
 
 function hydrateAuthUI() {
@@ -353,7 +369,7 @@ function hydrateAuthUI() {
   userSlots.forEach(el => {
     if (!el) return;
     if (!user || !isActiveToday) {
-      el.textContent = "Sin sesión";
+      el.textContent = "Sin sesion";
       return;
     }
 
@@ -369,6 +385,15 @@ function hydrateAuthUI() {
 
     const allowed = isAuthRoleAllowed(roles);
     if (!allowed) {
+      const hideIfDenied = String(el.getAttribute("data-role-hide-if-denied") || "")
+        .trim()
+        .toLowerCase() === "true";
+      if (hideIfDenied) {
+        el.setAttribute("hidden", "hidden");
+        el.style.display = "none";
+        return;
+      }
+
       if (el.matches("button") || el.matches("input") || el.matches("select") || el.matches("textarea") || el.matches("a")) {
         el.setAttribute("disabled", "disabled");
       }
@@ -395,6 +420,7 @@ window.clearAuthSession = clearAuthSession;
 window.requireAuth = requireAuth;
 window.ensureAuthSession = ensureAuthSession;
 window.isAuthRoleAllowed = isAuthRoleAllowed;
+window.getAuthRole = getAuthRole;
 window.hydrateAuthUI = hydrateAuthUI;
 window.authFetchMe = authFetchMe;
 window.isAuthBypassEnabled = () => false;
@@ -425,3 +451,4 @@ window.addEventListener("load", async () => {
 });
 
 })();
+
