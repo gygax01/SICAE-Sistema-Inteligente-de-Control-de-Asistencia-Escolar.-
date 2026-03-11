@@ -1042,8 +1042,7 @@ async function registrarAsistenciaServidor(payload) {
         () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload })
       ],
       postgrest: [
-        () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload }),
-        () => apiRequest("/attendance/registrar", { method: "POST", body: rpcPayload })
+        () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload })
       ]
     }), { acceptNull: true });
 
@@ -1067,6 +1066,22 @@ async function registrarAsistenciaServidor(payload) {
     return result;
   } catch (errRpcPrimario) {
     if (IS_SUPABASE_REST_MODE) {
+      const payloadErr = errRpcPrimario?.payload && typeof errRpcPrimario.payload === "object"
+        ? errRpcPrimario.payload
+        : {};
+      const code = String(payloadErr.code || "").trim();
+      const msg = String(payloadErr.message || errRpcPrimario?.message || "").toLowerCase();
+      const missingRpc =
+        errRpcPrimario?.status === 404 ||
+        code === "PGRST202" ||
+        msg.includes("function") ||
+        msg.includes("registrar_asistencia");
+
+      if (missingRpc) {
+        const err = new Error("RPC registrar_asistencia no disponible en Supabase. Ejecuta setup_concurrencia_realtime.sql y vuelve a intentar.");
+        err.cause = errRpcPrimario;
+        throw err;
+      }
       throw errRpcPrimario;
     }
 
