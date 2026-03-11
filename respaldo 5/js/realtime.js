@@ -152,9 +152,11 @@ let pollAlumnosId = null;
 let pollAttendanceId = null;
 let alumnosSincronizados = false;
 let authErrorRedireccionado = false;
+let attendanceNotificacionesInicializadas = false;
+const attendanceEventosNotificados = new Map();
 
 const POLL_ALUMNOS_MS = 10000;
-const POLL_ATTENDANCE_MS = 6000;
+const POLL_ATTENDANCE_MS = 2500;
 
 function pgEq(value) {
   return `eq.${String(value)}`;
@@ -612,6 +614,66 @@ function ordenarEventosPorFecha(eventos = [], asc = true) {
   });
 }
 
+function claveEventoAttendance(ev = {}) {
+  const id = String(ev?.id || "").trim();
+  if (id) return `id:${id}`;
+
+  const alumnoId = String(ev?.alumno_id || ev?.cliente_id || "").trim();
+  const uid = normalizarUID(ev?.uid || "");
+  const type = String(ev?.type || ev?.accion || "").trim().toLowerCase();
+  const createdAt = String(ev?.created_at || "").trim();
+  if (!type || (!alumnoId && !uid)) return "";
+  return `sig:${alumnoId}|${uid}|${type}|${createdAt}`;
+}
+
+function limpiarCacheEventosAttendance(nowTs = Date.now()) {
+  const TTL_MS = 1000 * 60 * 30;
+  const MAX_SIZE = 6000;
+  const minTs = nowTs - TTL_MS;
+
+  for (const [key, ts] of attendanceEventosNotificados.entries()) {
+    if (ts < minTs) {
+      attendanceEventosNotificados.delete(key);
+    }
+  }
+
+  if (attendanceEventosNotificados.size <= MAX_SIZE) return;
+
+  const entries = Array.from(attendanceEventosNotificados.entries())
+    .sort((a, b) => a[1] - b[1]);
+  const removeCount = attendanceEventosNotificados.size - MAX_SIZE;
+
+  for (let i = 0; i < removeCount; i += 1) {
+    const key = entries[i]?.[0];
+    if (key) attendanceEventosNotificados.delete(key);
+  }
+}
+
+function marcarEventoAttendanceComoVisto(ev = {}) {
+  const key = claveEventoAttendance(ev);
+  if (!key) return false;
+
+  const nowTs = Date.now();
+  limpiarCacheEventosAttendance(nowTs);
+
+  if (attendanceEventosNotificados.has(key)) return false;
+  attendanceEventosNotificados.set(key, nowTs);
+  return true;
+}
+
+function emitirEventosAttendanceNuevos(nuevos = []) {
+  if (!Array.isArray(nuevos) || !nuevos.length) return;
+  if (typeof window.onAttendanceEventRemoto !== "function") return;
+
+  for (const ev of nuevos) {
+    try {
+      window.onAttendanceEventRemoto(ev);
+    } catch (err) {
+      console.warn("[ATTENDANCE] Error notificando evento remoto:", err?.message || err);
+    }
+  }
+}
+
 async function logEstadoServidor() {
   if (!navigator.onLine) {
     console.warn("[API] Offline: trabajando en modo local");
@@ -960,10 +1022,50 @@ async function registrarAsistenciaServidor(payload) {
   const payloadNormalizado = {
     ...payload,
     alumno_id: alumnoId,
-    cliente_id: alumnoId
+    cliente_id: alumnoId,
+    uid: normalizarUID(payload?.uid)
+  };
+  const rpcPayload = {
+    p_id: payloadNormalizado?.id,
+    p_alumno_id: alumnoId,
+    p_cliente_id: alumnoId,
+    p_uid: payloadNormalizado?.uid,
+    p_created_at: payloadNormalizado?.created_at,
+    p_source: payloadNormalizado?.source,
+    p_device_id: payloadNormalizado?.device_id
   };
 
   try {
+    const rpc = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/attendance/registrar", { method: "POST", body: rpcPayload }),
+        () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload })
+      ],
+      postgrest: [
+        () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload }),
+        () => apiRequest("/attendance/registrar", { method: "POST", body: rpcPayload })
+      ]
+    }), { acceptNull: true });
+
+    const out = objetoDesdeRespuesta(rpc) || {};
+    const accion = String(out.accion || out.type || payloadNormalizado?.type || "").toLowerCase();
+    const result = {
+      accion: accion || String(payloadNormalizado?.type || "").toLowerCase(),
+      event_id: String(out.id || out.event_id || payloadNormalizado?.id || "").trim() || null,
+      created_at: out.created_at || payloadNormalizado?.created_at || null,
+      alumno_id: out.alumno_id || out.cliente_id || alumnoId || null,
+      uid: normalizarUID(out.uid || payloadNormalizado?.uid || "")
+    };
+
+    marcarEventoAttendanceComoVisto({
+      id: result.event_id,
+      alumno_id: result.alumno_id,
+      uid: result.uid,
+      type: result.accion,
+      created_at: result.created_at
+    });
+    return result;
+  } catch (errRpcPrimario) {
     const res = await apiTry(ordenarLlamadasApi({
       backend: [
         () => apiRequest("/attendance", { method: "POST", body: payloadNormalizado }),
@@ -981,31 +1083,22 @@ async function registrarAsistenciaServidor(payload) {
 
     const out = objetoDesdeRespuesta(res) || {};
     const accion = String(out.accion || out.type || payloadNormalizado?.type || "").toLowerCase();
-    return { accion: accion || String(payloadNormalizado?.type || "").toLowerCase() };
-  } catch (errPrimario) {
-    if (IS_SUPABASE_REST_MODE) {
-      throw errPrimario;
-    }
-
-    const rpcPayload = {
-      p_id: payloadNormalizado?.id,
-      p_alumno_id: alumnoId,
-      p_cliente_id: alumnoId,
-      p_uid: payloadNormalizado?.uid,
-      p_created_at: payloadNormalizado?.created_at,
-      p_source: payloadNormalizado?.source,
-      p_device_id: payloadNormalizado?.device_id
+    const result = {
+      accion: accion || String(payloadNormalizado?.type || "").toLowerCase(),
+      event_id: String(out.id || out.event_id || payloadNormalizado?.id || "").trim() || null,
+      created_at: out.created_at || payloadNormalizado?.created_at || null,
+      alumno_id: out.alumno_id || out.cliente_id || alumnoId || null,
+      uid: normalizarUID(out.uid || payloadNormalizado?.uid || "")
     };
 
-    const rpc = await apiTry([
-      () => apiRequest("/attendance/registrar", { method: "POST", body: rpcPayload }),
-      () => apiRequest("/rpc/registrar_asistencia", { method: "POST", body: rpcPayload })
-    ], { acceptNull: true });
-
-    const out = objetoDesdeRespuesta(rpc) || {};
-    const accion = String(out.accion || out.type || payloadNormalizado?.type || "").toLowerCase();
-
-    return { accion };
+    marcarEventoAttendanceComoVisto({
+      id: result.event_id,
+      alumno_id: result.alumno_id,
+      uid: result.uid,
+      type: result.accion,
+      created_at: result.created_at
+    });
+    return result;
   }
 }
 
@@ -1026,6 +1119,7 @@ async function reconstruirAsistenciasHoy() {
 
   const sesiones = {};
   const resultado = [];
+  const nuevosEventosRemotos = [];
 
   for (const ev of eventos) {
     const key = String(ev.alumno_id || ev.uid || "");
@@ -1043,6 +1137,17 @@ async function reconstruirAsistenciasHoy() {
       const alumno = ev.alumno_id
         ? (alumnosPorId.get(String(ev.alumno_id)) || {})
         : (alumnosPorUID.get(normalizarUID(ev.uid)) || {});
+      const wasSeen = marcarEventoAttendanceComoVisto(ev);
+      if (attendanceNotificacionesInicializadas && wasSeen) {
+        nuevosEventosRemotos.push({
+          id: ev.id,
+          alumno_id: ev.alumno_id || null,
+          uid: ev.uid || "",
+          type: ev.type,
+          created_at: ev.created_at,
+          alumno
+        });
+      }
 
       if (ev.type === "entrada") {
         entradaActiva = {
@@ -1073,6 +1178,13 @@ async function reconstruirAsistenciasHoy() {
   if (typeof notificarCambioAsistencias === "function") {
     notificarCambioAsistencias();
   }
+
+  if (!attendanceNotificacionesInicializadas) {
+    attendanceNotificacionesInicializadas = true;
+    return;
+  }
+
+  emitirEventosAttendanceNuevos(nuevosEventosRemotos);
 }
 
 function iniciarRealtimeAlumnos() {
@@ -1169,23 +1281,22 @@ async function marcarEventoNFCProcesado(eventId) {
 async function obtenerEventoNFCPendiente() {
   if (!navigator.onLine) return null;
 
-  const claimCalls = ordenarLlamadasApi({
-    backend: [
-      () => apiRequest("/nfc-events/claim", { method: "POST" }),
-      () => apiRequest("/nfc-events/next", { method: "POST" })
-    ],
-    postgrest: []
-  });
+  try {
+    const claim = await apiTry(ordenarLlamadasApi({
+      backend: [
+        () => apiRequest("/nfc-events/claim", { method: "POST" }),
+        () => apiRequest("/nfc-events/next", { method: "POST" })
+      ],
+      postgrest: [
+        () => apiRequest("/rpc/claim_next_nfc_event", { method: "POST", body: {} }),
+        () => apiRequest("/rpc/claim_nfc_event", { method: "POST", body: {} })
+      ]
+    }), { acceptNull: true });
 
-  if (claimCalls.length) {
-    try {
-      const claim = await apiTry(claimCalls, { acceptNull: true });
-
-      const ev = normalizarEventoNFC(objetoDesdeRespuesta(claim));
-      if (ev) return ev;
-    } catch (_) {
-      // fallback abajo
-    }
+    const evClaim = normalizarEventoNFC(objetoDesdeRespuesta(claim));
+    if (evClaim) return evClaim;
+  } catch (_) {
+    // fallback abajo
   }
 
   try {
@@ -1469,6 +1580,7 @@ window.reconstruirAsistenciasHoy = reconstruirAsistenciasHoy;
 window.obtenerEventosAttendanceRemotos = obtenerEventosAttendanceRemotos;
 window.obtenerUltimoTipoAsistenciaHoyRemoto = obtenerUltimoTipoAsistenciaHoyRemoto;
 window.registrarAsistenciaServidor = registrarAsistenciaServidor;
+window.marcarEventoAttendanceComoVisto = marcarEventoAttendanceComoVisto;
 window.obtenerEventoNFCPendiente = obtenerEventoNFCPendiente;
 window.marcarEventoNFCProcesado = marcarEventoNFCProcesado;
 window.obtenerResumenDashboardRemoto = obtenerResumenDashboardRemoto;
