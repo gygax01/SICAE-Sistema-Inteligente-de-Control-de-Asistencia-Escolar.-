@@ -448,6 +448,12 @@ function alumnoVacioBase() {
     matricula: "",
     grado: "",
     grupo: "",
+    tipoSangre: "",
+    alergias: "",
+    tutorNombre: "",
+    tutorParentesco: "",
+    tutorTelefono: "",
+    tutorCorreo: "",
     tarjetaUID: "",
     fechaRegistro: hoy()
   };
@@ -466,6 +472,12 @@ function normalizarAlumno(raw = {}) {
     matricula: String(raw.matricula ?? raw.student_id ?? "").trim().toUpperCase(),
     grado: String(raw.grado ?? raw.grade ?? "").trim().toUpperCase(),
     grupo: String(raw.grupo ?? raw.group ?? "").trim().toUpperCase(),
+    tipoSangre: String(raw.tipoSangre ?? raw.tipo_sangre ?? "").trim().toUpperCase(),
+    alergias: String(raw.alergias ?? "").trim(),
+    tutorNombre: String(raw.tutorNombre ?? raw.tutor_nombre ?? "").trim(),
+    tutorParentesco: String(raw.tutorParentesco ?? raw.tutor_parentesco ?? "").trim().toUpperCase(),
+    tutorTelefono: String(raw.tutorTelefono ?? raw.tutor_telefono ?? "").trim(),
+    tutorCorreo: String(raw.tutorCorreo ?? raw.tutor_correo ?? "").trim().toLowerCase(),
     tarjetaUID: normalizarUID(raw.tarjetaUID ?? raw.tarjeta_uid ?? ""),
     fechaRegistro: String(raw.fechaRegistro ?? raw.fecha_registro ?? hoy()).trim()
   };
@@ -490,10 +502,10 @@ function upsertAlumnoLocal(alumno) {
   bc.postMessage("alumnos");
 }
 
-function alumnoAPayloadServidor(alumno) {
+function alumnoAPayloadServidor(alumno, { legacy = false } = {}) {
   const a = normalizarAlumno(alumno);
 
-  return {
+  const core = {
     id: a.id,
     nombre: a.nombre,
     correo: a.correo || null,
@@ -505,6 +517,65 @@ function alumnoAPayloadServidor(alumno) {
     tarjeta_uid: a.tarjetaUID || null,
     fecha_registro: a.fechaRegistro || hoy()
   };
+
+  if (legacy) {
+    return core;
+  }
+
+  return {
+    ...core,
+    tipo_sangre: a.tipoSangre || null,
+    alergias: a.alergias || null,
+    tutor_nombre: a.tutorNombre || null,
+    tutor_parentesco: a.tutorParentesco || null,
+    tutor_telefono: a.tutorTelefono || null,
+    tutor_correo: a.tutorCorreo || null
+  };
+}
+
+function esErrorColumnaNoExiste(err) {
+  const payload = err?.payload && typeof err.payload === "object" ? err.payload : {};
+  const code = String(payload.code || "").trim();
+  const message = String(payload.message || err?.message || "").toLowerCase();
+
+  if (code === "PGRST204") return true;
+  if (message.includes("could not find") && message.includes("column")) return true;
+  if (message.includes("column") && message.includes("does not exist")) return true;
+  return false;
+}
+
+async function insertarAlumnoRemotoConPayload(payload) {
+  return apiTry(ordenarLlamadasApi({
+    backend: [
+      () => apiRequest("/alumnos", { method: "POST", body: payload }),
+      () => apiRequest("/students", { method: "POST", body: payload })
+    ],
+    postgrest: [
+      () => apiRequest("/alumnos", {
+        method: "POST",
+        body: payload,
+        headers: { Prefer: "return=representation" }
+      }),
+      () => apiRequest("/alumnos", { method: "POST", body: payload })
+    ]
+  }));
+}
+
+async function actualizarAlumnoRemotoConPayload(idRaw, idPath, payload) {
+  return apiTry(ordenarLlamadasApi({
+    backend: [
+      () => apiRequest(`/alumnos/${idPath}`, { method: "PUT", body: payload }),
+      () => apiRequest(`/alumnos/${idPath}`, { method: "PATCH", body: payload })
+    ],
+    postgrest: [
+      () => apiRequest("/alumnos", {
+        method: "PATCH",
+        query: { id: pgEq(idRaw) },
+        body: payload,
+        headers: { Prefer: "return=representation" }
+      })
+    ]
+  }));
 }
 
 function normalizarEventoAttendance(raw = {}) {
@@ -711,21 +782,16 @@ async function insertarAlumnoSupabase(alumno) {
 
   try {
     const payload = alumnoAPayloadServidor(alumno);
+    let res = null;
 
-    const res = await apiTry(ordenarLlamadasApi({
-      backend: [
-        () => apiRequest("/alumnos", { method: "POST", body: payload }),
-        () => apiRequest("/students", { method: "POST", body: payload })
-      ],
-      postgrest: [
-        () => apiRequest("/alumnos", {
-          method: "POST",
-          body: payload,
-          headers: { Prefer: "return=representation" }
-        }),
-        () => apiRequest("/alumnos", { method: "POST", body: payload })
-      ]
-    }));
+    try {
+      res = await insertarAlumnoRemotoConPayload(payload);
+    } catch (errInsert) {
+      if (!esErrorColumnaNoExiste(errInsert)) {
+        throw errInsert;
+      }
+      res = await insertarAlumnoRemotoConPayload(alumnoAPayloadServidor(alumno, { legacy: true }));
+    }
 
     const representacion = objetoDesdeRespuesta(res);
     const guardado = representacion || alumno;
@@ -771,20 +837,18 @@ async function actualizarAlumnoSupabase(alumno) {
     const idRaw = String(alumno.id);
     const idPath = encodeURIComponent(idRaw);
 
-    await apiTry(ordenarLlamadasApi({
-      backend: [
-        () => apiRequest(`/alumnos/${idPath}`, { method: "PUT", body: payload }),
-        () => apiRequest(`/alumnos/${idPath}`, { method: "PATCH", body: payload })
-      ],
-      postgrest: [
-        () => apiRequest("/alumnos", {
-          method: "PATCH",
-          query: { id: pgEq(idRaw) },
-          body: payload,
-          headers: { Prefer: "return=representation" }
-        })
-      ]
-    }));
+    try {
+      await actualizarAlumnoRemotoConPayload(idRaw, idPath, payload);
+    } catch (errUpdate) {
+      if (!esErrorColumnaNoExiste(errUpdate)) {
+        throw errUpdate;
+      }
+      await actualizarAlumnoRemotoConPayload(
+        idRaw,
+        idPath,
+        alumnoAPayloadServidor(alumno, { legacy: true })
+      );
+    }
 
     upsertAlumnoLocal(alumno);
     return true;
