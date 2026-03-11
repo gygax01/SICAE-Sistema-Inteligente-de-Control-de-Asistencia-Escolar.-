@@ -85,7 +85,7 @@
   <script src="js/storage.js?v=20260310a"></script>
   <script src="js/auth.js?v=20260310c"></script>
   <script src="js/asistencias.js?v=20260310a"></script>
-  <script src="js/realtime.js?v=20260310e"></script>
+  <script src="js/realtime.js?v=20260311a"></script>
   <script src="js/nfc.js?v=20260310a"></script>
 
   <script>
@@ -98,6 +98,8 @@
     let ultimoHeartbeatLector = 0;
     let monitorHeartbeatId = null;
     const alumnosEnProceso = new Set();
+    const eventosAnimados = new Map();
+    const EVENTO_ANIM_TTL_MS = 1000 * 60 * 15;
 
     window.addEventListener("load", async () => {
       const estadoLector = document.getElementById("estadoLector");
@@ -244,6 +246,60 @@
       }, 2200);
     }
 
+    function claveEventoAnimado(ev = {}) {
+      const id = String(ev?.event_id || ev?.id || "").trim();
+      if (id) return `id:${id}`;
+
+      const alumnoId = String(ev?.alumno_id || ev?.cliente_id || "").trim();
+      const uid = normalizarUID(ev?.uid || "");
+      const tipo = String(ev?.accion || ev?.type || "").trim().toLowerCase();
+      const createdAt = String(ev?.created_at || "").trim();
+      if (!tipo || (!alumnoId && !uid)) return "";
+      return `sig:${alumnoId}|${uid}|${tipo}|${createdAt}`;
+    }
+
+    function limpiarEventosAnimados() {
+      const nowTs = Date.now();
+      const minTs = nowTs - EVENTO_ANIM_TTL_MS;
+
+      for (const [key, ts] of eventosAnimados.entries()) {
+        if (ts < minTs) {
+          eventosAnimados.delete(key);
+        }
+      }
+
+      if (eventosAnimados.size <= 4000) return;
+
+      const entries = Array.from(eventosAnimados.entries()).sort((a, b) => a[1] - b[1]);
+      const overflow = eventosAnimados.size - 4000;
+      for (let i = 0; i < overflow; i += 1) {
+        const key = entries[i]?.[0];
+        if (key) eventosAnimados.delete(key);
+      }
+    }
+
+    function marcarEventoAnimado(ev = {}) {
+      const key = claveEventoAnimado(ev);
+      if (!key) return false;
+      limpiarEventosAnimados();
+      if (eventosAnimados.has(key)) return false;
+      eventosAnimados.set(key, Date.now());
+      return true;
+    }
+
+    async function obtenerAlumnoDesdeEvento(ev = {}) {
+      const alumnoId = String(ev?.alumno_id || "").trim();
+      if (alumnoId) {
+        const alumnos = typeof obtenerAlumnos === "function" ? obtenerAlumnos() : safeGet("alumnos");
+        const local = (alumnos || []).find(a => String(a.id || "") === alumnoId);
+        if (local) return local;
+      }
+
+      const uid = normalizarUID(ev?.uid || "");
+      if (!uid) return null;
+      return obtenerAlumnoPorUID(uid);
+    }
+
     function iniciarLecturaNFCIndex(estadoLector) {
       if (!estadoLector) return;
       setEstadoLector(estadoLector, "warn", "Conectando lector...");
@@ -316,9 +372,15 @@
       };
     }
 
-    async function registrarAsistenciaConControl({ alumnoId, uid, accion }) {
+    async function registrarAsistenciaConControl({ alumnoId, uid, accion = null }) {
       if (typeof registrarAsistenciaServidor !== "function") {
         throw new Error("registrarAsistenciaServidor no disponible");
+      }
+
+      let accionSugerida = String(accion || "").trim().toLowerCase();
+      if (accionSugerida !== "entrada" && accionSugerida !== "salida") {
+        const control = await resolverAccionEsperada(alumnoId);
+        accionSugerida = String(control?.accionEsperada || "entrada").toLowerCase();
       }
 
       const payload = {
@@ -326,7 +388,7 @@
         alumno_id: alumnoId,
         uid,
         created_at: new Date().toISOString(),
-        type: accion,
+        type: accionSugerida,
         source: "wifi",
         device_id: "pc_control_escolar"
       };
@@ -378,21 +440,35 @@
         alumnoIdProcesado = alumno.id;
         alumnosEnProceso.add(alumno.id);
 
-        const control = await resolverAccionEsperada(alumno.id);
-        const accionEsperada = control.accionEsperada;
-
         const resultado = await registrarAsistenciaConControl({
           alumnoId: alumno.id,
-          uid,
-          accion: accionEsperada
+          uid
         });
 
-        if (resultado?.accion !== accionEsperada) {
-          mostrarConfirmacion("error", "Secuencia inválida", "El sistema detectó una acción fuera de orden");
-          return;
+        const accionReal = String(resultado?.accion || "").toLowerCase();
+        if (accionReal !== "entrada" && accionReal !== "salida") {
+          throw new Error("accion_asistencia_invalida");
         }
 
-        if (resultado.accion === "entrada") {
+        marcarEventoAnimado({
+          id: resultado?.event_id || resultado?.id,
+          alumno_id: alumno.id,
+          uid,
+          type: accionReal,
+          created_at: resultado?.created_at
+        });
+
+        if (typeof marcarEventoAttendanceComoVisto === "function") {
+          marcarEventoAttendanceComoVisto({
+            id: resultado?.event_id || resultado?.id,
+            alumno_id: alumno.id,
+            uid,
+            type: accionReal,
+            created_at: resultado?.created_at
+          });
+        }
+
+        if (accionReal === "entrada") {
           mostrarConfirmacion("entrada", "Entrada registrada", alumno.nombre || "Alumno");
         } else {
           mostrarConfirmacion("salida", "Salida registrada", alumno.nombre || "Alumno");
@@ -414,6 +490,27 @@
         }
       }
     }
+
+    window.onAttendanceEventRemoto = async ev => {
+      const tipo = String(ev?.type || ev?.accion || "").toLowerCase();
+      if (tipo !== "entrada" && tipo !== "salida") return;
+      if (!marcarEventoAnimado(ev)) return;
+
+      const alumno = (ev?.alumno && typeof ev.alumno === "object")
+        ? ev.alumno
+        : await obtenerAlumnoDesdeEvento(ev);
+      const nombre = String(alumno?.nombre || "Alumno").trim() || "Alumno";
+
+      if (tipo === "entrada") {
+        mostrarConfirmacion("entrada", "Entrada registrada", nombre);
+      } else {
+        mostrarConfirmacion("salida", "Salida registrada", nombre);
+      }
+
+      renderTablaConEstado();
+      actualizarContador();
+      await actualizarDashboard();
+    };
 
     const canal = typeof createAppBroadcastChannel === "function"
       ? createAppBroadcastChannel("victory-data")
