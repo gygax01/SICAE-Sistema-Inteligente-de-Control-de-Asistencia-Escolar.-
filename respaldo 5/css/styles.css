@@ -717,12 +717,178 @@ th {
   border-color: #f3c2c2;
 }
 
+.estado-horario-docente {
+  width: min(1180px, 92vw);
+  margin: 0 auto 8px auto;
+}
+
+.horarios-toolbar {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.horarios-toolbar label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.horarios-catalogos {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.catalog-card {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.catalog-card h4 {
+  margin-bottom: 8px;
+  color: #2e5641;
+}
+
+.catalog-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.chip-list {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  max-width: 100%;
+}
+
+.chip span {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.chip button {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #e7d4d4;
+  background: #fff3f3;
+  color: #a93434;
+  line-height: 1;
+  min-width: 0;
+}
+
+.horarios-periodos {
+  margin-top: 14px;
+  padding-bottom: 10px;
+}
+
+.horarios-periodos .panel-acciones {
+  width: min(1080px, 100%);
+  margin: 10px auto 0 auto;
+}
+
+.horarios-map-shell {
+  margin-top: 14px;
+}
+
+.horarios-mapa {
+  min-width: 980px;
+}
+
+.periodo-label {
+  min-width: 130px;
+  background: #f0f9f4;
+}
+
+.periodo-label strong {
+  font-size: 16px;
+  color: #2e5641;
+}
+
+.periodo-label span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cell-horario {
+  width: 100%;
+  min-height: 92px;
+  border: 1px solid #dbe9e2;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 4px;
+}
+
+.cell-horario.is-empty {
+  background: #f7fbf9;
+  border-style: dashed;
+}
+
+.cell-horario.is-view-only {
+  cursor: default;
+}
+
+.cell-horario .cell-title {
+  font-weight: 700;
+  color: #1f5b3e;
+  font-size: 13px;
+}
+
+.cell-horario .cell-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.popup-horario {
+  width: min(780px, 92vw);
+  text-align: left;
+}
+
+.popup-horario h2 {
+  margin-bottom: 6px;
+}
+
+.horario-resumen {
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 @media (max-width: 1120px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .panel-acciones {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .horarios-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .horarios-catalogos {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -758,7 +924,9 @@ th {
   .panel-acciones.panel-inline,
   .registro-grid,
   .registro-acciones,
-  .import-actions {
+  .import-actions,
+  .horarios-toolbar,
+  .horarios-catalogos {
     grid-template-columns: 1fr;
   }
 
