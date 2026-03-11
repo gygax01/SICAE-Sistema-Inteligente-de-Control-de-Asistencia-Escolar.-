@@ -1066,6 +1066,10 @@ async function registrarAsistenciaServidor(payload) {
     });
     return result;
   } catch (errRpcPrimario) {
+    if (IS_SUPABASE_REST_MODE) {
+      throw errRpcPrimario;
+    }
+
     const res = await apiTry(ordenarLlamadasApi({
       backend: [
         () => apiRequest("/attendance", { method: "POST", body: payloadNormalizado }),
@@ -1295,7 +1299,9 @@ async function obtenerEventoNFCPendiente() {
 
     const evClaim = normalizarEventoNFC(objetoDesdeRespuesta(claim));
     if (evClaim) return evClaim;
+    if (IS_SUPABASE_REST_MODE) return null;
   } catch (_) {
+    if (IS_SUPABASE_REST_MODE) return null;
     // fallback abajo
   }
 
