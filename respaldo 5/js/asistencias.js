@@ -61,6 +61,22 @@ function formatearHoraTS(ts) {
   return h || "-";
 }
 
+function aplicarFiltroHorarioDocente(lista = []) {
+  const filtro = typeof window.filtroAsistenciaHorarioDocente === "function"
+    ? window.filtroAsistenciaHorarioDocente
+    : null;
+
+  if (!filtro) return lista;
+
+  return lista.filter(item => {
+    try {
+      return filtro(item) !== false;
+    } catch (_) {
+      return true;
+    }
+  });
+}
+
 /* ======================================================
    ===== CARGAR TABLA ===================================
 ====================================================== */
@@ -75,12 +91,14 @@ function cargarAsistencias() {
 
   tbody.innerHTML = "";
 
-  asistencias
+  const listaBase = asistencias
     .filter(a =>
       a &&
       a.fecha === hoyFecha &&
       typeof a.nombre === "string"
-    )
+    );
+
+  aplicarFiltroHorarioDocente(listaBase)
     .sort((a, b) =>
       obtenerTimestampSeguro(b) - obtenerTimestampSeguro(a)
     )
@@ -123,12 +141,13 @@ function actualizarContador() {
 
   if (!Array.isArray(asistencias)) return;
 
-  const dentro = asistencias.filter(a =>
+  const listaBase = asistencias.filter(a =>
     a &&
     a.fecha === hoyFecha &&
     a.entrada_ts &&
     !a.salida_ts
-  ).length;
+  );
+  const dentro = aplicarFiltroHorarioDocente(listaBase).length;
 
   const contador = document.getElementById("contadorAforo");
   if (!contador) return;
