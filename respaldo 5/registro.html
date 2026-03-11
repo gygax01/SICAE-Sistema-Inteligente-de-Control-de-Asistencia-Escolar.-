@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 
-<body data-requires-auth="true">
+<body data-requires-auth="true" data-page-role-allow="direccion">
   <header class="header-brand">
     <div class="brand">
       <img src="img/logo.png" alt="Control Escolar">
@@ -19,7 +19,7 @@
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesión</span>
+      <span class="session-pill" data-auth-user>Sin sesiÃ³n</span>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
@@ -34,14 +34,42 @@
       <input id="correo" type="email" placeholder="Correo electronico">
       <input id="fechaNacimiento" type="date" placeholder="Fecha de nacimiento">
       <input id="telefono" type="tel" placeholder="Telefono de contacto">
-      <input id="matricula" placeholder="Matrícula">
+      <input id="matricula" placeholder="MatrÃ­cula">
       <input id="grado" placeholder="Grado (ej: 1, 2, 3)">
       <input id="grupo" placeholder="Grupo (ej: A, B)">
+      <select id="tipoSangre">
+        <option value="">Tipo de sangre</option>
+        <option value="A+">A+</option>
+        <option value="A-">A-</option>
+        <option value="B+">B+</option>
+        <option value="B-">B-</option>
+        <option value="AB+">AB+</option>
+        <option value="AB-">AB-</option>
+        <option value="O+">O+</option>
+        <option value="O-">O-</option>
+      </select>
+      <input id="tutorNombre" placeholder="Nombre completo del tutor">
+      <select id="tutorParentesco">
+        <option value="">Parentesco del tutor</option>
+        <option value="MADRE">Madre</option>
+        <option value="PADRE">Padre</option>
+        <option value="TUTOR_LEGAL">Tutor legal</option>
+        <option value="ABUELA">Abuela</option>
+        <option value="ABUELO">Abuelo</option>
+        <option value="HERMANA">Hermana</option>
+        <option value="HERMANO">Hermano</option>
+        <option value="TIA">Tia</option>
+        <option value="TIO">Tio</option>
+        <option value="OTRO_FAMILIAR">Otro familiar</option>
+      </select>
+      <input id="tutorTelefono" type="tel" placeholder="Numero de contacto del tutor">
+      <input id="tutorCorreo" type="email" placeholder="Correo de contacto del tutor">
+      <textarea id="alergias" rows="2" placeholder="Alergias del alumno"></textarea>
     </div>
 
     <div class="registro-acciones">
-      <button class="btn-nfc" id="btnAsignar" data-role-allow="admin,capturista" onclick="abrirPopupNFC()">Asignar tarjeta NFC</button>
-      <button class="btn-registrar" id="btnRegistrar" data-role-allow="admin,capturista" onclick="registrarAlumno()" disabled>Registrar alumno</button>
+      <button class="btn-nfc" id="btnAsignar" data-role-allow="direccion" onclick="abrirPopupNFC()">Asignar tarjeta NFC</button>
+      <button class="btn-registrar" id="btnRegistrar" data-role-allow="direccion" onclick="registrarAlumno()" disabled>Registrar alumno</button>
     </div>
 
     <p class="ayuda">Primero asigna la tarjeta NFC y despues guarda el alumno.</p>
@@ -53,14 +81,15 @@
         <a class="btn-plantilla" href="plantillas/plantilla_alumnos_cecyte.xlsx" download onclick="descargarPlantilla()">
           Descargar plantilla Excel
         </a>
-        <button class="btn-importar" id="btnImportarExcel" data-role-allow="admin,capturista" type="button" onclick="abrirSelectorExcel()">
+        <button class="btn-importar" id="btnImportarExcel" data-role-allow="direccion" type="button" onclick="abrirSelectorExcel()">
           Cargar lista de alumnos
         </button>
       </div>
       <input id="inputExcel" type="file" accept=".xlsx,.xls,.csv" style="display:none">
       <p class="import-status" id="importStatus"></p>
       <p class="ayuda">
-        Columnas obligatorias: nombre_completo, correo_electronico, fecha_nacimiento, telefono_contacto, matricula, grado, grupo.
+        Columnas obligatorias: nombre_completo, correo_electronico, fecha_nacimiento, telefono_contacto, matricula, grado, grupo,
+        tipo_sangre, tutor_nombre_completo, tutor_parentesco, tutor_telefono_contacto, tutor_correo_contacto, alergias.
         Columna opcional: tarjeta_uid.
       </p>
     </div>
@@ -81,8 +110,8 @@
   </div>
 
   <script src="js/storage.js?v=20260310a"></script>
-  <script src="js/auth.js?v=20260310b"></script>
-  <script src="js/realtime.js?v=20260310d"></script>
+  <script src="js/auth.js?v=20260310c"></script>
+  <script src="js/realtime.js?v=20260310e"></script>
   <script src="js/nfc.js?v=20260310a"></script>
 
   <script>
@@ -92,6 +121,19 @@
     const inputExcelEl = document.getElementById("inputExcel");
     const importStatusEl = document.getElementById("importStatus");
     const estadoRegistroEl = document.getElementById("estadoRegistro");
+    const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+    const TUTOR_RELATIONS = [
+      "MADRE",
+      "PADRE",
+      "TUTOR_LEGAL",
+      "ABUELA",
+      "ABUELO",
+      "HERMANA",
+      "HERMANO",
+      "TIA",
+      "TIO",
+      "OTRO_FAMILIAR"
+    ];
 
     const HEADERS_REQUERIDOS = [
       "nombre_completo",
@@ -100,7 +142,13 @@
       "telefono_contacto",
       "matricula",
       "grado",
-      "grupo"
+      "grupo",
+      "tipo_sangre",
+      "tutor_nombre_completo",
+      "tutor_parentesco",
+      "tutor_telefono_contacto",
+      "tutor_correo_contacto",
+      "alergias"
     ];
 
     const HEADER_ALIASES = {
@@ -116,6 +164,17 @@
       matricula: "matricula",
       grado: "grado",
       grupo: "grupo",
+      tipo_sangre: "tipo_sangre",
+      sangre: "tipo_sangre",
+      tutor_nombre_completo: "tutor_nombre_completo",
+      nombre_tutor: "tutor_nombre_completo",
+      tutor_parentesco: "tutor_parentesco",
+      parentesco_tutor: "tutor_parentesco",
+      tutor_telefono_contacto: "tutor_telefono_contacto",
+      telefono_tutor: "tutor_telefono_contacto",
+      tutor_correo_contacto: "tutor_correo_contacto",
+      correo_tutor: "tutor_correo_contacto",
+      alergias: "alergias",
       tarjeta_uid: "tarjeta_uid",
       uid: "tarjeta_uid"
     };
@@ -136,7 +195,7 @@
 
     function validarPermisosCaptura() {
       const permitido = typeof isAuthRoleAllowed === "function"
-        ? isAuthRoleAllowed(["admin", "capturista"])
+        ? isAuthRoleAllowed(["direccion"])
         : true;
 
       if (!permitido) {
@@ -160,6 +219,16 @@
 
     function validarCorreo(correo) {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo);
+    }
+
+    function normalizarTipoSangre(valor) {
+      const v = String(valor || "").trim().toUpperCase();
+      return BLOOD_TYPES.includes(v) ? v : "";
+    }
+
+    function normalizarParentescoTutor(valor) {
+      const v = String(valor || "").trim().toUpperCase().replace(/\s+/g, "_");
+      return TUTOR_RELATIONS.includes(v) ? v : "";
     }
 
     function normalizarMatricula(valor) {
@@ -266,6 +335,12 @@
         matricula: normalizarMatricula(fila.matricula),
         grado: String(fila.grado || "").trim().toUpperCase(),
         grupo: String(fila.grupo || "").trim().toUpperCase(),
+        tipoSangre: normalizarTipoSangre(fila.tipo_sangre),
+        alergias: String(fila.alergias || "").trim(),
+        tutorNombre: String(fila.tutor_nombre_completo || "").trim(),
+        tutorParentesco: normalizarParentescoTutor(fila.tutor_parentesco),
+        tutorTelefono: String(fila.tutor_telefono_contacto || "").trim(),
+        tutorCorreo: String(fila.tutor_correo_contacto || "").trim().toLowerCase(),
         tarjetaUID: uid
       };
     }
@@ -276,6 +351,15 @@
       }
       if (!validarCorreo(alumno.correo)) {
         return "Correo invalido";
+      }
+      if (!alumno.tipoSangre) {
+        return "Tipo de sangre invalido";
+      }
+      if (!alumno.tutorNombre || !alumno.tutorParentesco || !alumno.tutorTelefono || !alumno.tutorCorreo) {
+        return "Datos del tutor incompletos";
+      }
+      if (!validarCorreo(alumno.tutorCorreo)) {
+        return "Correo del tutor invalido";
       }
       return null;
     }
@@ -350,7 +434,7 @@
 
     async function importarExcelAlumnos(event) {
       const permitido = typeof isAuthRoleAllowed === "function"
-        ? isAuthRoleAllowed(["admin", "capturista"])
+        ? isAuthRoleAllowed(["direccion"])
         : true;
 
       if (!permitido) {
@@ -406,7 +490,7 @@
           }
 
           if (vistosMatricula.has(alumno.matricula)) {
-            errores.push(`Fila ${fila.__rownum}: matrícula duplicada en el archivo (${alumno.matricula})`);
+            errores.push(`Fila ${fila.__rownum}: matrÃ­cula duplicada en el archivo (${alumno.matricula})`);
             continue;
           }
           vistosMatricula.add(alumno.matricula);
@@ -511,7 +595,7 @@
       if (leyendoNFC) return;
 
       const permitido = typeof isAuthRoleAllowed === "function"
-        ? isAuthRoleAllowed(["admin", "capturista"])
+        ? isAuthRoleAllowed(["direccion"])
         : true;
 
       if (!permitido) {
@@ -577,6 +661,12 @@
         matricula: normalizarMatricula(matricula.value),
         grado: grado.value.trim().toUpperCase(),
         grupo: grupo.value.trim().toUpperCase(),
+        tipoSangre: normalizarTipoSangre(tipoSangre.value),
+        alergias: alergias.value.trim(),
+        tutorNombre: tutorNombre.value.trim(),
+        tutorParentesco: normalizarParentescoTutor(tutorParentesco.value),
+        tutorTelefono: tutorTelefono.value.trim(),
+        tutorCorreo: tutorCorreo.value.trim().toLowerCase(),
         tarjetaUID: normalizarUID(tarjetaUID),
         fechaRegistro: hoy()
       };
@@ -595,12 +685,24 @@
         return "Asigna una tarjeta NFC";
       }
 
+      if (!alumno.tipoSangre) {
+        return "Selecciona un tipo de sangre valido";
+      }
+
+      if (!alumno.tutorNombre || !alumno.tutorParentesco || !alumno.tutorTelefono || !alumno.tutorCorreo) {
+        return "Completa todos los datos del tutor";
+      }
+
+      if (!validarCorreo(alumno.tutorCorreo)) {
+        return "Correo de contacto del tutor invalido";
+      }
+
       return null;
     }
 
     async function registrarAlumno() {
       const permitido = typeof isAuthRoleAllowed === "function"
-        ? isAuthRoleAllowed(["admin", "capturista"])
+        ? isAuthRoleAllowed(["direccion"])
         : true;
 
       if (!permitido) {
@@ -628,7 +730,7 @@
       }
 
       if (duplicado === "matricula") {
-        mostrarConfirm("Registro bloqueado", "Esa matrícula ya existe", "error");
+        mostrarConfirm("Registro bloqueado", "Esa matrÃ­cula ya existe", "error");
         return;
       }
 
@@ -698,3 +800,4 @@
   </script>
 </body>
 </html>
+
