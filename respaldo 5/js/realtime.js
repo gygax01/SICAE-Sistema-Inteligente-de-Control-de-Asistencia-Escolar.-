@@ -699,7 +699,7 @@ async function logEstadoServidor() {
 
     console.info(`[API] Conexion OK (${API_BASE_URL})`);
   } catch (err) {
-    console.error("[API] Error de conexion:", err?.message || err);
+    console.error("[API] Error de conexión:", err?.message || err);
   }
 }
 
@@ -838,7 +838,7 @@ async function insertarAlumnoSupabase(alumno) {
     return resultadoInsertAlumno({
       ok: false,
       code: "OFFLINE",
-      message: "Sin conexion a internet. No se pudo registrar en la base de datos."
+      message: "Sin conexión a internet. No se pudo registrar en la base de datos."
     });
   }
 
@@ -1654,7 +1654,7 @@ window.addEventListener("load", async () => {
 });
 
 window.addEventListener("online", async () => {
-  console.info("[APP] Conexion restablecida");
+  console.info("[APP] Conexión restablecida");
   alumnosSincronizados = false;
   authErrorRedireccionado = false;
 
@@ -1674,7 +1674,7 @@ window.addEventListener("online", async () => {
 });
 
 window.addEventListener("offline", () => {
-  console.warn("[APP] Sin conexion a internet");
+  console.warn("[APP] Sin conexión a internet");
 });
 
 })();
