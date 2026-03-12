@@ -185,7 +185,7 @@ async function initHorarios() {
   setEstado(
     puedeEditar
       ? "Listo. Puedes mapear celdas por grupo para asignar docente, materia y lector."
-      : "Modo consulta habilitado. Solo Direccion puede editar el mapeo.",
+      : "Modo consulta habilitado. Solo Dirección puede editar el mapeo.",
     puedeEditar ? "ok" : "warn"
   );
 }
@@ -315,7 +315,7 @@ function renderCatalogos() {
         if (!puedeEditar) return;
         mapa.docentes = (mapa.docentes || []).filter(x => String(x.id || "") !== String(d.id || ""));
         if (docenteActivo === String(d.id || "")) docenteActivo = "";
-        persistirMapa("Docente removido del catalogo", "warn");
+        persistirMapa("Docente removido del catálogo", "warn");
         renderTodo();
       }
     }))
@@ -329,7 +329,7 @@ function renderCatalogos() {
       onRemove: () => {
         if (!puedeEditar) return;
         mapa.salones = (mapa.salones || []).filter(x => String(x.id || "") !== String(s.id || ""));
-        persistirMapa("Salon removido del catalogo", "warn");
+        persistirMapa("Salón removido del catálogo", "warn");
         renderTodo();
       }
     }))
@@ -540,7 +540,7 @@ function renderSelectSalonesEditor(selectedId = "") {
 
   const base = document.createElement("option");
   base.value = "";
-  base.textContent = "Sin salon";
+  base.textContent = "Sin salón";
   edSalonHorario.appendChild(base);
 
   (mapa.salones || []).forEach(s => {
@@ -617,7 +617,7 @@ function agregarGrupo() {
   }
 
   if ((mapa.grupos || []).some(g => String(g.key || "") === key)) {
-    setEstado("Ese grupo ya existe en el catalogo", "warn");
+    setEstado("Ese grupo ya existe en el catálogo.", "warn");
     return;
   }
 
@@ -647,12 +647,12 @@ function agregarDocente() {
   const id = username || slugLocal(nombre);
 
   if (!id) {
-    setEstado("Captura nombre o usuario del docente", "error");
+    setEstado("Captura nombre o usuario del docente.", "error");
     return;
   }
 
   if ((mapa.docentes || []).some(d => String(d.id || "") === id)) {
-    setEstado("Ese docente ya existe en el catalogo", "warn");
+    setEstado("Ese docente ya existe en el catálogo.", "warn");
     return;
   }
 
@@ -679,12 +679,12 @@ function agregarSalon() {
   const id = slugLocal(nombre) || slugLocal(lectorId);
 
   if (!id || !nombre) {
-    setEstado("Captura nombre del salon", "error");
+    setEstado("Captura nombre del salón.", "error");
     return;
   }
 
   if ((mapa.salones || []).some(s => String(s.id || "") === id)) {
-    setEstado("Ese salon ya existe en el catalogo", "warn");
+    setEstado("Ese salón ya existe en el catálogo.", "warn");
     return;
   }
 
@@ -697,7 +697,7 @@ function agregarSalon() {
   if (inNombre) inNombre.value = "";
   if (inLector) inLector.value = "";
 
-  persistirMapa("Salon agregado", "ok");
+  persistirMapa("Salón agregado", "ok");
   renderTodo();
 }
 
@@ -717,12 +717,12 @@ function guardarPeriodos() {
   const nuevos = Array.from(byPeriodo.values()).sort((a, b) => Number(a.numero || 0) - Number(b.numero || 0));
   const validos = nuevos.every(p => String(p.inicio || "").trim() && String(p.fin || "").trim());
   if (!validos) {
-    setEstado("Completa inicio y fin en todos los periodos", "error");
+    setEstado("Completa inicio y fin en todos los períodos.", "error");
     return;
   }
 
   mapa.config.periodos = nuevos;
-  persistirMapa("Periodos actualizados", "ok");
+  persistirMapa("Períodos actualizados", "ok");
   renderPeriodos();
   renderMapa();
 }
@@ -730,7 +730,7 @@ function guardarPeriodos() {
 function resetearPeriodos() {
   if (!puedeEditar) return;
   mapa.config.periodos = (window.horarioDefaultPeriodos || []).map(p => ({ ...p }));
-  persistirMapa("Periodos restaurados a sugerencia de 50 min", "warn");
+  persistirMapa("Períodos restaurados a sugerencia de 50 min", "warn");
   renderPeriodos();
   renderMapa();
 }
@@ -769,7 +769,7 @@ async function importarJSON(e) {
     setEstado("Archivo importado correctamente", "ok");
   } catch (err) {
     console.error(err);
-    setEstado("JSON invalido, no se pudo importar", "error");
+    setEstado("JSON inválido, no se pudo importar.", "error");
   }
 }
 
