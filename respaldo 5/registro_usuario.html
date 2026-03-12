@@ -11,14 +11,14 @@
     <section class="login-card">
       <img src="img/logo.png" alt="Logo CECyTE" class="login-logo">
       <h1>Registro de usuario</h1>
-      <p class="login-sub">Alta de cuentas para roles docente o direccion.</p>
+      <p class="login-sub">Alta de cuentas para roles docente o dirección.</p>
 
       <form id="formRegistroUsuario" class="login-form" autocomplete="off">
         <label>
           Tipo de usuario
           <select id="rol" required>
             <option value="docente">Docente</option>
-            <option value="direccion">Direccion</option>
+            <option value="direccion">Dirección</option>
           </select>
         </label>
 
@@ -28,7 +28,7 @@
         </label>
 
         <label>
-          Telefono
+          Teléfono
           <input id="telefono" type="tel" required>
         </label>
 
@@ -43,7 +43,7 @@
         </label>
 
         <label>
-          Anio de nacimiento
+          Año de nacimiento
           <input id="anioNacimiento" type="number" min="1900" max="2100" required>
         </label>
 
@@ -63,12 +63,12 @@
         </label>
 
         <label>
-          Contrasena
+          Contraseña
           <input id="password" type="password" minlength="6" required>
         </label>
 
         <label>
-          Contrasena maestra
+          Contraseña maestra
           <input id="masterPassword" type="password" required>
         </label>
 
@@ -79,12 +79,12 @@
         <a class="btn-plantilla" href="login.html">Volver a login</a>
       </div>
 
-      <p id="registroMsg" class="login-msg">La contrasena maestra es obligatoria para registrar cualquier usuario.</p>
+      <p id="registroMsg" class="login-msg">La contraseña maestra es obligatoria para registrar cualquier usuario.</p>
     </section>
   </main>
 
   <script src="js/storage.js?v=20260310b"></script>
-  <script src="js/auth.js?v=20260310c"></script>
+  <script src="js/auth.js?v=20260312a"></script>
   <script>
     const form = document.getElementById("formRegistroUsuario");
     const msg = document.getElementById("registroMsg");
@@ -119,23 +119,23 @@
       }
 
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
-        setMsg("Correo invalido", "error");
+        setMsg("Correo inválido.", "error");
         return;
       }
 
       if (!validarCurp(curp)) {
-        setMsg("CURP invalida (debe tener 18 caracteres validos)", "error");
+        setMsg("CURP inválida (debe tener 18 caracteres válidos).", "error");
         return;
       }
 
       const anioActual = Number(new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" }).slice(0, 4));
       if (!Number.isFinite(anioNacimiento) || anioNacimiento < 1900 || anioNacimiento > anioActual) {
-        setMsg("Anio de nacimiento invalido", "error");
+        setMsg("Año de nacimiento inválido.", "error");
         return;
       }
 
       if (password.length < 6) {
-        setMsg("La contrasena debe tener al menos 6 caracteres", "error");
+        setMsg("La contraseña debe tener al menos 6 caracteres.", "error");
         return;
       }
 
