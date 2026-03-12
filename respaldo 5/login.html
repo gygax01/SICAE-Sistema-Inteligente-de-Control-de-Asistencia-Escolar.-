@@ -11,20 +11,20 @@
     <section class="login-card">
       <img src="img/logo.png" alt="Logo CECyTE" class="login-logo">
       <h1>Sistema de Asistencia Escolar</h1>
-      <p class="login-sub">Inicia sesiÃ³n. El acceso se solicita una vez por dÃ­a.</p>
+      <p class="login-sub">Inicia sesión. El acceso se solicita una vez por día.</p>
 
       <form id="formLogin" class="login-form" autocomplete="off">
         <label>
           Usuario
-          <input id="username" type="text" placeholder="usuario" required>
+          <input id="username" type="text" placeholder="usuario institucional" required>
         </label>
 
         <label>
-          Contrasena
+          Contraseña
           <input id="password" type="password" placeholder="********" required>
         </label>
 
-        <button type="submit" id="btnLogin" class="btn-login">Iniciar sesiÃ³n</button>
+        <button type="submit" id="btnLogin" class="btn-login">Iniciar sesión</button>
       </form>
 
       <div class="login-alt-actions">
@@ -36,7 +36,7 @@
   </main>
 
   <script src="js/storage.js?v=20260310b"></script>
-  <script src="js/auth.js?v=20260310c"></script>
+  <script src="js/auth.js?v=20260312a"></script>
   <script>
     const form = document.getElementById("formLogin");
     const msg = document.getElementById("loginMsg");
@@ -63,7 +63,7 @@
       const password = document.getElementById("password").value;
 
       if (!username || !password) {
-        setMsg("Completa usuario y contrasena", "error");
+        setMsg("Completa usuario y contraseña.", "error");
         return;
       }
 
@@ -77,7 +77,7 @@
 
         const out = await appAuthLogin({ username, password });
         if (!out?.ok || !out?.user?.id) {
-          setMsg(out?.message || "Usuario o contrasena invalidos", "error");
+          setMsg(out?.message || "Usuario o contraseña inválidos.", "error");
           return;
         }
 
@@ -90,7 +90,7 @@
         }, 500);
       } catch (err) {
         console.error(err);
-        setMsg(err?.message || "No se pudo iniciar sesiÃ³n", "error");
+        setMsg(err?.message || "No se pudo iniciar sesión.", "error");
       } finally {
         btn.disabled = false;
       }
