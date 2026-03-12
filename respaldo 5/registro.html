@@ -19,7 +19,7 @@
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesiÃ³n</span>
+      <span class="session-pill" data-auth-user>Sin sesión</span>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
@@ -31,10 +31,10 @@
 
     <div class="registro-grid">
       <input id="nombre" placeholder="Nombre completo">
-      <input id="correo" type="email" placeholder="Correo electronico">
+      <input id="correo" type="email" placeholder="Correo electrónico">
       <input id="fechaNacimiento" type="date" placeholder="Fecha de nacimiento">
-      <input id="telefono" type="tel" placeholder="Telefono de contacto">
-      <input id="matricula" placeholder="MatrÃ­cula">
+      <input id="telefono" type="tel" placeholder="Teléfono de contacto">
+      <input id="matricula" placeholder="Matrícula">
       <input id="grado" placeholder="Grado (ej: 1, 2, 3)">
       <input id="grupo" placeholder="Grupo (ej: A, B)">
       <select id="tipoSangre">
@@ -58,11 +58,11 @@
         <option value="ABUELO">Abuelo</option>
         <option value="HERMANA">Hermana</option>
         <option value="HERMANO">Hermano</option>
-        <option value="TIA">Tia</option>
-        <option value="TIO">Tio</option>
+        <option value="TIA">Tía</option>
+        <option value="TIO">Tío</option>
         <option value="OTRO_FAMILIAR">Otro familiar</option>
       </select>
-      <input id="tutorTelefono" type="tel" placeholder="Numero de contacto del tutor">
+      <input id="tutorTelefono" type="tel" placeholder="Número de contacto del tutor">
       <input id="tutorCorreo" type="email" placeholder="Correo de contacto del tutor">
       <textarea id="alergias" rows="2" placeholder="Alergias del alumno"></textarea>
     </div>
@@ -72,11 +72,11 @@
       <button class="btn-registrar" id="btnRegistrar" data-role-allow="direccion" onclick="registrarAlumno()" disabled>Registrar alumno</button>
     </div>
 
-    <p class="ayuda">Primero asigna la tarjeta NFC y despues guarda el alumno.</p>
+    <p class="ayuda">Primero asigna la tarjeta NFC y después guarda el alumno.</p>
     <p id="uidTexto" class="uid"></p>
 
     <div class="import-wrap" id="importacionExcel">
-      <h4>Importacion masiva desde Excel</h4>
+      <h4>Importación masiva desde Excel</h4>
       <div class="import-actions">
         <a class="btn-plantilla" href="plantillas/plantilla_alumnos_cecyte.xlsx" download onclick="descargarPlantilla()">
           Descargar plantilla Excel
@@ -110,8 +110,8 @@
   </div>
 
   <script src="js/storage.js?v=20260310a"></script>
-  <script src="js/auth.js?v=20260310c"></script>
-  <script src="js/realtime.js?v=20260311e"></script>
+  <script src="js/auth.js?v=20260312a"></script>
+  <script src="js/realtime.js?v=20260312a"></script>
   <script src="js/nfc.js?v=20260310a"></script>
 
   <script>
@@ -256,7 +256,7 @@
     }
 
     function descargarPlantilla() {
-      setImportStatus("Plantilla descargada. Llenala y luego sube el archivo en 'Cargar lista de alumnos'.", "ok");
+      setImportStatus("Plantilla descargada. Llénala y luego sube el archivo en 'Cargar lista de alumnos'.", "ok");
     }
 
     function excelDateToISO(value) {
@@ -350,16 +350,16 @@
         return "Campos obligatorios incompletos";
       }
       if (!validarCorreo(alumno.correo)) {
-        return "Correo invalido";
+        return "Correo inválido";
       }
       if (!alumno.tipoSangre) {
-        return "Tipo de sangre invalido";
+        return "Tipo de sangre inválido";
       }
       if (!alumno.tutorNombre || !alumno.tutorParentesco || !alumno.tutorTelefono || !alumno.tutorCorreo) {
         return "Datos del tutor incompletos";
       }
       if (!validarCorreo(alumno.tutorCorreo)) {
-        return "Correo del tutor invalido";
+        return "Correo del tutor inválido";
       }
       return null;
     }
@@ -456,7 +456,7 @@
         const ws = wb.Sheets[nombreHoja];
 
         if (!ws) {
-          setImportStatus("No se encontro una hoja valida en el archivo.", "error");
+          setImportStatus("No se encontró una hoja válida en el archivo.", "error");
           return;
         }
 
@@ -490,7 +490,7 @@
           }
 
           if (vistosMatricula.has(alumno.matricula)) {
-            errores.push(`Fila ${fila.__rownum}: matrÃ­cula duplicada en el archivo (${alumno.matricula})`);
+            errores.push(`Fila ${fila.__rownum}: matrícula duplicada en el archivo (${alumno.matricula})`);
             continue;
           }
           vistosMatricula.add(alumno.matricula);
@@ -544,15 +544,15 @@
         const sync = await sincronizarRemotoImportacion(nuevos, actualizados);
         const fallasRemotas = (sync?.fallasInsert?.length || 0) + (sync?.fallasUpdate?.length || 0);
         if (fallasRemotas > 0) {
-          errores.push(`Sincronizacion remota incompleta: ${fallasRemotas} fila(s)`);
+          errores.push(`Sincronización remota incompleta: ${fallasRemotas} fila(s)`);
           console.warn("[IMPORTACION] Fallas remotas:", sync);
         }
 
-        const resumen = `Importacion completada. Nuevos: ${nuevos.length}, actualizados: ${actualizados.length}, errores: ${errores.length}`;
+        const resumen = `Importación completada. Nuevos: ${nuevos.length}, actualizados: ${actualizados.length}, errores: ${errores.length}`;
         setImportStatus(resumen, errores.length ? "warn" : "ok");
 
         if (!errores.length) {
-          mostrarConfirm("Importacion completada", `Se cargaron ${nuevos.length + actualizados.length} alumnos`, "entrada");
+          mostrarConfirm("Importación completada", `Se cargaron ${nuevos.length + actualizados.length} alumnos`, "entrada");
         } else {
           console.warn("[IMPORTACION] Errores detectados:", errores);
         }
@@ -678,7 +678,7 @@
       }
 
       if (!validarCorreo(alumno.correo)) {
-        return "Correo electronico invalido";
+        return "Correo electrónico inválido";
       }
 
       if (!alumno.tarjetaUID) {
@@ -686,7 +686,7 @@
       }
 
       if (!alumno.tipoSangre) {
-        return "Selecciona un tipo de sangre valido";
+        return "Selecciona un tipo de sangre válido";
       }
 
       if (!alumno.tutorNombre || !alumno.tutorParentesco || !alumno.tutorTelefono || !alumno.tutorCorreo) {
@@ -694,7 +694,7 @@
       }
 
       if (!validarCorreo(alumno.tutorCorreo)) {
-        return "Correo de contacto del tutor invalido";
+        return "Correo de contacto del tutor inválido";
       }
 
       return null;
@@ -730,7 +730,7 @@
       }
 
       if (duplicado === "matricula") {
-        mostrarConfirm("Registro bloqueado", "Esa matrÃ­cula ya existe", "error");
+        mostrarConfirm("Registro bloqueado", "Esa matrícula ya existe", "error");
         return;
       }
 
@@ -740,8 +740,8 @@
       }
 
       if (!navigator.onLine) {
-        setEstadoRegistro("Sin internet. Conectate para registrar en la base de datos.", "error");
-        mostrarConfirm("Sin conexion", "Conectate a internet para guardar en la base de datos", "error");
+        setEstadoRegistro("Sin internet. Conéctate para registrar en la base de datos.", "error");
+        mostrarConfirm("Sin conexión", "Conéctate a internet para guardar en la base de datos.", "error");
         return;
       }
 
@@ -771,8 +771,8 @@
         }
         bcRegistro.postMessage("alumnos");
         btnRegistrar.disabled = false;
-        setEstadoRegistro("No hay conexion con el modulo de sincronizacion remota.", "error");
-        mostrarConfirm("Registro fallido", "No se pudo conectar con el modulo remoto", "error");
+        setEstadoRegistro("No hay conexión con el módulo de sincronización remota.", "error");
+        mostrarConfirm("Registro fallido", "No se pudo conectar con el módulo remoto", "error");
         return;
       }
 
