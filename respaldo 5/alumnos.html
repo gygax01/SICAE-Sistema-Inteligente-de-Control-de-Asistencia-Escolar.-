@@ -18,8 +18,8 @@
     </div>
 
     <div class="header-actions">
-      <span class="session-pill" data-auth-user>Sin sesion</span>
-      <button id="btnModoEdicion" class="btn-sec" data-role-allow="direccion" data-role-hide-if-denied="true" type="button">Modo edicion: OFF</button>
+      <span class="session-pill" data-auth-user>Sin sesión</span>
+      <button id="btnModoEdicion" class="btn-sec" data-role-allow="direccion" data-role-hide-if-denied="true" type="button">Modo edición: OFF</button>
       <button class="btn-sec" onclick="location.href='index.html'">Volver</button>
       <button class="btn-sec" data-auth-logout>Salir</button>
     </div>
@@ -33,8 +33,8 @@
       <input id="edNombre" placeholder="Nombre completo">
       <input id="edCorreo" type="email" placeholder="Correo">
       <input id="edFechaNacimiento" type="date" placeholder="Fecha de nacimiento">
-      <input id="edTelefono" type="tel" placeholder="Telefono">
-      <input id="edMatricula" placeholder="Matricula">
+      <input id="edTelefono" type="tel" placeholder="Teléfono">
+      <input id="edMatricula" placeholder="Matrícula">
       <input id="edGrado" placeholder="Grado (ej: 1, 2, 3)">
       <input id="edGrupo" placeholder="Grupo (ej: A, B)">
       <input id="edTarjetaUID" placeholder="UID tarjeta NFC">
@@ -61,11 +61,11 @@
         <option value="ABUELO">Abuelo</option>
         <option value="HERMANA">Hermana</option>
         <option value="HERMANO">Hermano</option>
-        <option value="TIA">Tia</option>
-        <option value="TIO">Tio</option>
+        <option value="TIA">Tía</option>
+        <option value="TIO">Tío</option>
         <option value="OTRO_FAMILIAR">Otro familiar</option>
       </select>
-      <input id="edTutorTelefono" type="tel" placeholder="Telefono del tutor">
+      <input id="edTutorTelefono" type="tel" placeholder="Teléfono del tutor">
       <input id="edTutorCorreo" type="email" placeholder="Correo del tutor">
       <textarea id="edAlergias" rows="2" placeholder="Alergias del alumno"></textarea>
     </div>
@@ -77,7 +77,7 @@
   </section>
 
   <section class="search-bar">
-    <input id="busquedaAlumnos" placeholder="Buscar por nombre, matricula, correo o UID...">
+    <input id="busquedaAlumnos" placeholder="Buscar por nombre, matrícula, correo o UID...">
   </section>
 
   <p id="estadoAlumnos" class="screen-status loading">Cargando alumnos...</p>
@@ -88,7 +88,7 @@
         <tr>
           <th>#</th>
           <th>Nombre</th>
-          <th>Matricula</th>
+          <th>Matrícula</th>
           <th>Grado / Grupo</th>
           <th>Tipo sangre</th>
           <th>Tutor</th>
@@ -101,8 +101,8 @@
   </div>
 
   <script src="js/storage.js?v=20260310a"></script>
-  <script src="js/auth.js?v=20260310c"></script>
-  <script src="js/realtime.js?v=20260311e"></script>
+  <script src="js/auth.js?v=20260312a"></script>
+  <script src="js/realtime.js?v=20260312a"></script>
 
   <script>
     const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -282,7 +282,7 @@
       }
 
       if (!lista.length) {
-        setEstado("No hay coincidencias para la busqueda actual.", "warn");
+        setEstado("No hay coincidencias para la búsqueda actual.", "warn");
         return;
       }
 
@@ -337,7 +337,7 @@
       }
 
       modoEdicion = !!activo;
-      btnModoEdicion.textContent = `Modo edicion: ${modoEdicion ? "ON" : "OFF"}`;
+      btnModoEdicion.textContent = `Modo edición: ${modoEdicion ? "ON" : "OFF"}`;
       panelEdicionAlumno.style.display = modoEdicion ? "block" : "none";
 
       if (!modoEdicion) {
@@ -415,16 +415,16 @@
         return "Completa todos los datos principales del alumno";
       }
       if (!validarCorreo(alumno.correo)) {
-        return "Correo del alumno invalido";
+        return "Correo del alumno inválido";
       }
       if (!alumno.tipoSangre) {
-        return "Selecciona un tipo de sangre valido";
+        return "Selecciona un tipo de sangre válido";
       }
       if (!alumno.tutorNombre || !alumno.tutorParentesco || !alumno.tutorTelefono || !alumno.tutorCorreo) {
         return "Completa todos los datos del tutor";
       }
       if (!validarCorreo(alumno.tutorCorreo)) {
-        return "Correo del tutor invalido";
+        return "Correo del tutor inválido";
       }
       return null;
     }
@@ -441,7 +441,7 @@
 
       const idx = alumnos.findIndex(a => String(a.id) === String(editado.id));
       if (idx < 0) {
-        setEstadoEdicion("No se encontro el alumno seleccionado.", "error");
+        setEstadoEdicion("No se encontró el alumno seleccionado.", "error");
         return;
       }
 
@@ -465,7 +465,7 @@
       if (typeof actualizarAlumnoSupabase === "function") {
         const ok = await actualizarAlumnoSupabase(merged);
         if (!ok) {
-          setEstadoEdicion("Se guardo localmente, pero fallo la actualizacion remota.", "warn");
+          setEstadoEdicion("Se guardó localmente, pero falló la actualización remota.", "warn");
         } else {
           setEstadoEdicion("Alumno actualizado correctamente.", "ok");
         }
