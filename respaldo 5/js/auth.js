@@ -283,7 +283,7 @@ async function appAuthRegisterUser(payload = {}) {
     const out = objetoRespuesta(res) || {};
     const user = normalizarUsuario(out.user || out);
     if (!user.id) {
-      throw new Error("Registro sin respuesta valida");
+      throw new Error("Registro sin respuesta válida");
     }
 
     return {
@@ -310,19 +310,19 @@ async function appAuthLogin({ username, password }) {
     const out = objetoRespuesta(res) || {};
     const user = normalizarUsuario(out.user || out);
     if (!user.id) {
-      throw new Error("Login sin respuesta valida");
+      throw new Error("Login sin respuesta válida");
     }
 
     return {
       ok: true,
       user,
-      message: String(out.message || "Sesion iniciada")
+      message: String(out.message || "Sesión iniciada")
     };
   } catch (err) {
     return {
       ok: false,
       code: String(err?.payload?.code || err?.status || "AUTH_LOGIN_ERROR"),
-      message: authErrorMessage(err, "Usuario o contrasena invalida")
+      message: authErrorMessage(err, "Usuario o contraseña inválida")
     };
   }
 }
@@ -369,7 +369,7 @@ function hydrateAuthUI() {
   userSlots.forEach(el => {
     if (!el) return;
     if (!user || !isActiveToday) {
-      el.textContent = "Sin sesion";
+      el.textContent = "Sin sesión";
       return;
     }
 
