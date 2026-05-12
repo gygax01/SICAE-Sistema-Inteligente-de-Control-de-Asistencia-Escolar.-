@@ -4,7 +4,7 @@
 
 (() => {
 
-const SUPABASE_PROJECT_URL = "https://vqylvfutuiococveggej.supabase.co";
+const SUPABASE_PROJECT_URL = "https://xdkeuutuzqksftrdlalw.supabase.co";
 const SUPABASE_REST_URL = `${SUPABASE_PROJECT_URL}/rest/v1`;
 const SUPABASE_PROJECT_REF = (() => {
   try {
@@ -13,8 +13,8 @@ const SUPABASE_PROJECT_REF = (() => {
     return "";
   }
 })();
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_C3jhIFoDyrdFr5PuTU2_tg_D8-WWItk";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxeWx2ZnV0dWlvY29jdmVnZ2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjIxNzMsImV4cCI6MjA4ODM5ODE3M30.JjG3-RLOYSpGnacdC9fwSgDG17Z_5rz5RHt6PUN7Y5M";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FsC1zSEdwd52sZucSn7N8w_XdWuKStI";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhka2V1dXR1enFrc2Z0cmRsYWx3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NTc3MTksImV4cCI6MjA5NDEzMzcxOX0.tM4_vl_d7IpFDY5aciDnkwVEoKZgJqDfjdYbzXCFFvc";
 const DEFAULT_API_BASE_URL = SUPABASE_REST_URL;
 const SUPABASE_API_KEY_STORAGE_KEY = "SUPABASE_API_KEY";
 const getStore = typeof storageGetItem === "function"
